@@ -1,0 +1,533 @@
+package net.pocketmap
+
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.provider.Settings
+import android.view.Gravity
+import android.view.MotionEvent
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Overlay
+import org.osmdroid.views.overlay.FolderOverlay
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.util.BoundingBox
+import android.widget.PopupMenu
+import java.util.concurrent.Executors
+import java.io.File
+
+class MainActivity : Activity(), LocationListener {
+    private lateinit var map: MapView
+    private lateinit var status: TextView
+    private lateinit var recenter: Button
+    private lateinit var manager: LocationManager
+    private val trailExecutor = Executors.newSingleThreadExecutor()
+    private lateinit var trailStatus: TextView
+    private lateinit var trailRepository: TrailRepository
+    private val trailOverlay = FolderOverlay()
+    private var trailDocument: TrailKml.Document? = null
+    private var refreshingTrails = false
+    private var destroyed = false
+    private var trailsVisible = true
+    private lateinit var recordButton: android.widget.ImageButton
+    private lateinit var recordStatus: TextView
+    private val recordingOverlay = FolderOverlay()
+    private val recordingHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var displayedTrack = ""
+    private var displayedLength = -1L
+    private var recordedPointCount = 0
+    private val recordingTick = object : Runnable {
+        override fun run() { updateRecording(); if (active) recordingHandler.postDelayed(this, 1000) }
+    }
+    private var following = true
+    private var active = false
+    private var current: Location? = null
+    private var reportText: String? = null
+    private var reportAccuracy = 0
+    private var reportPhoto: String? = null
+    private var cameraPhoto: String? = null
+    private var reportEditor: android.widget.EditText? = null
+    private var reportDialog: android.app.AlertDialog? = null
+    private val prefs by lazy { getSharedPreferences("map", MODE_PRIVATE) }
+    private val dot = object : Overlay() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+            if (shadow) return
+            val fix = current ?: return
+            val point = mapView.projection.toPixels(GeoPoint(fix.latitude, fix.longitude), null)
+            paint.color = Color.WHITE
+            canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(10).toFloat(), paint)
+            paint.color = Color.rgb(21, 101, 192)
+            canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(7).toFloat(), paint)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Configuration.getInstance().apply {
+            userAgentValue = "Trail/1.7 (net.pocketmap; personal Android map)"
+            osmdroidBasePath = File(filesDir, "osmdroid")
+            osmdroidTileCache = File(cacheDir, "tiles")
+        }
+        manager = getSystemService(LOCATION_SERVICE) as LocationManager
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.setOnApplyWindowInsetsListener { view, insets ->
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            } else {
+                view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+            }
+            insets
+        }
+        status = TextView(this).apply { setPadding(dp(12), dp(8), dp(12), dp(8)); text = "Waiting for location…" }
+        root.addView(status)
+        trailStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(6)); text = "Loading trails…" }
+        root.addView(trailStatus)
+        recordStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(4)) }
+        root.addView(recordStatus)
+        map = MapView(this).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            minZoomLevel = 3.0
+            maxZoomLevel = 19.0
+            controller.setZoom(prefs.getFloat("zoom", 17f).toDouble())
+            controller.setCenter(GeoPoint(prefs.getFloat("lat", 40.7f).toDouble(), prefs.getFloat("lon", -74.7f).toDouble()))
+            overlays.add(trailOverlay)
+            overlays.add(recordingOverlay)
+            overlays.add(dot)
+        }
+        var startX = 0f
+        var startY = 0f
+        map.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { startX = event.x; startY = event.y }
+                MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && (kotlin.math.abs(event.x - startX) > dp(12) || kotlin.math.abs(event.y - startY) > dp(12))) {
+                    following = false
+                    refreshStatus()
+                }
+            }
+            false
+        }
+        val mapFrame = android.widget.FrameLayout(this)
+        mapFrame.addView(map, android.widget.FrameLayout.LayoutParams(-1, -1))
+        recordButton = android.widget.ImageButton(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.WHITE) }
+            elevation = dp(6).toFloat()
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            setOnClickListener { toggleRecording() }
+        }
+        mapFrame.addView(recordButton, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.END).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        val flagButton = android.widget.ImageButton(this).apply {
+            contentDescription = "Share current location"
+            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.WHITE) }
+            elevation = dp(6).toFloat()
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            setImageResource(R.drawable.ic_report_flag)
+            setOnClickListener { shareCurrentLocation() }
+        }
+        mapFrame.addView(flagButton, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        root.addView(mapFrame, LinearLayout.LayoutParams(-1, 0, 1f))
+        recenter = Button(this).apply {
+            text = "Recenter / follow GPS"
+            setOnClickListener {
+                following = true
+                if (!hasPermission()) requestLocationPermission()
+                else if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER) && !manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                current?.let { map.controller.setCenter(GeoPoint(it.latitude, it.longitude)) }
+                refreshStatus()
+            }
+        }
+        val buttons = LinearLayout(this)
+        buttons.addView(recenter, LinearLayout.LayoutParams(0, -2, 1f))
+        buttons.addView(Button(this).apply {
+            text = "Trails"
+            setOnClickListener { button ->
+                PopupMenu(this@MainActivity, button).apply {
+                    menu.add(0, 4, 3, "Share recorded GPX…")
+                    menu.add(0, 1, 0, "Refresh trails")
+                    menu.add(0, 2, 1, "Zoom to trails")
+                    menu.add(0, 3, 2, if (trailsVisible) "Hide trails" else "Show trails")
+                    setOnMenuItemClickListener { item ->
+                        when (item.itemId) {
+                            4 -> chooseRecordedTrack()
+                            1 -> refreshTrails()
+                            2 -> trailDocument?.let { document ->
+                                val points = document.features.flatMap { it.points }.map { GeoPoint(it.latitude, it.longitude) }
+                                following = false
+                                trailsVisible = true
+                                trailOverlay.isEnabled = true
+                                map.zoomToBoundingBox(BoundingBox.fromGeoPoints(points), true, dp(40))
+                                refreshStatus()
+                            }
+                            3 -> { trailsVisible = !trailsVisible; trailOverlay.isEnabled = trailsVisible; map.invalidate() }
+                        }
+                        true
+                    }
+                    show()
+                }
+            }
+        })
+        root.addView(buttons)
+        root.addView(TextView(this).apply {
+            text = "© OpenStreetMap contributors"
+            gravity = Gravity.CENTER
+            setPadding(0, dp(5), 0, dp(8))
+            setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.openstreetmap.org/copyright"))) }
+        })
+        setContentView(root)
+        trailRepository = TrailRepository(filesDir)
+        refreshTrails()
+        if (!hasPermission()) requestLocationPermission()
+        savedInstanceState?.let {
+            reportText = it.getString("reportText")
+            reportAccuracy = it.getInt("reportAccuracy")
+            reportPhoto = it.getString("reportPhoto")
+            cameraPhoto = it.getString("cameraPhoto")
+        }
+        if (reportText != null && cameraPhoto == null) showReport()
+    }
+
+    private fun shareCurrentLocation() {
+        val fix = current?.let { Location(it) }
+        if (fix == null || android.os.SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > 30_000_000_000L) {
+            android.widget.Toast.makeText(this, "Waiting for a current location — try again in a moment", android.widget.Toast.LENGTH_LONG).show()
+            if (!hasPermission()) requestLocationPermission() else startLocation()
+            return
+        }
+        if (reportText == null) {
+            reportText = LocationReport.message(fix.latitude, fix.longitude)
+            reportAccuracy = fix.accuracy.toInt()
+        }
+        showReport()
+    }
+
+    private fun photoFile(name: String): File = ReportPhotoProvider.photoFile(filesDir, name)
+    private fun photoUri(name: String) = android.net.Uri.Builder().scheme("content")
+        .authority("$packageName.photos").appendPath("photo").appendPath(name).build()
+
+    private fun showReport() {
+        if (reportDialog?.isShowing == true || reportText == null) return
+        val message = android.widget.EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            minLines = 3
+            gravity = Gravity.TOP
+            setText(reportText)
+            setSelection(text.length)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        reportEditor = message
+        val dialog = android.app.AlertDialog.Builder(this).setTitle("Share current location")
+            .setMessage("GPS accuracy ±$reportAccuracy m. Add a description if you like." +
+                if (reportPhoto != null) "\nPhoto attached." else "")
+            .setView(message)
+            .setPositiveButton("Share", null)
+            .setNeutralButton(if (reportPhoto == null) "Take photo" else "Retake photo", null)
+            .setNegativeButton("Cancel") { _, _ -> clearReport() }
+            .setOnCancelListener { clearReport() }
+            .create()
+        reportDialog = dialog
+        dialog.setOnDismissListener { reportEditor = null; reportDialog = null }
+        dialog.show()
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            reportText = message.text.toString()
+            takeReportPhoto()
+        }
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            reportText = message.text.toString()
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = if (reportPhoto == null) "text/plain" else "image/jpeg"
+                putExtra(Intent.EXTRA_TEXT, reportText!!.trim())
+                putExtra(Intent.EXTRA_EMAIL, arrayOf("mbligh@mbligh.org"))
+                putExtra(Intent.EXTRA_SUBJECT, "Trail location report")
+                reportPhoto?.let {
+                    val uri = photoUri(it)
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = android.content.ClipData.newRawUri("Trail report photo", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+            try {
+                startActivity(Intent.createChooser(intent, "Share location report"))
+                // Keep the attachment available while the receiving app reads it.
+                clearReport(deletePhoto = false)
+                dialog.dismiss()
+            } catch (_: android.content.ActivityNotFoundException) {
+                android.widget.Toast.makeText(this, "No app available to share this report", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun takeReportPhoto() {
+        var name: String? = null
+        try {
+            val directory = File(filesDir, "report-photos").apply { mkdirs() }
+            name = File.createTempFile("Trail-report-", ".jpg", directory).name
+            val uri = photoUri(name)
+            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri)
+                clipData = android.content.ClipData.newRawUri("Trail report photo", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            cameraPhoto = name
+            startActivityForResult(intent, 3)
+            reportDialog?.dismiss()
+        } catch (_: Exception) {
+            name?.let { photoFile(it).delete() }
+            cameraPhoto = null
+            android.widget.Toast.makeText(this, "Unable to open the camera app", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    @Deprecated("Uses the platform camera activity result")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 3) return
+        val name = cameraPhoto ?: return
+        cameraPhoto = null
+        revokeUriPermission(photoUri(name), Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val file = photoFile(name)
+        if (resultCode == RESULT_OK && file.length() > 0) {
+            reportPhoto?.let { photoFile(it).delete() }
+            reportPhoto = name
+        } else {
+            file.delete()
+            if (resultCode == RESULT_OK) android.widget.Toast.makeText(this, "The camera did not save a photo. You can try again.", android.widget.Toast.LENGTH_LONG).show()
+        }
+        showReport()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        reportEditor?.let { reportText = it.text.toString() }
+        outState.putString("reportText", reportText)
+        outState.putInt("reportAccuracy", reportAccuracy)
+        outState.putString("reportPhoto", reportPhoto)
+        outState.putString("cameraPhoto", cameraPhoto)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun clearReport(deletePhoto: Boolean = true) {
+        if (deletePhoto) reportPhoto?.let { photoFile(it).delete() }
+        reportText = null
+        reportPhoto = null
+        reportEditor = null
+    }
+
+    private fun toggleRecording() {
+        if (RecordingService.running) {
+            stopService(Intent(this, RecordingService::class.java))
+            android.app.AlertDialog.Builder(this).setTitle("Recording saved")
+                .setMessage("Your track is saved on this phone.")
+                .setPositiveButton("Share GPX") { _, _ -> latestRecording()?.let { shareRecording(it) } }
+                .setNegativeButton("Done", null).show()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestLocationPermission()
+            android.widget.Toast.makeText(this, "Grant precise location, then tap Record again", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)); return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
+        startForegroundService(Intent(this, RecordingService::class.java))
+    }
+    private fun recordings() = File(filesDir, "recordings").listFiles()?.filter { it.extension == "csv" }?.sortedByDescending { it.name } ?: emptyList()
+    private fun latestRecording(): File? = prefs.getString("recorded_track", null)?.let { File(File(filesDir, "recordings"), it) }?.takeIf { it.exists() }
+    private fun chooseRecordedTrack() {
+        val files = recordings()
+        if (files.isEmpty()) { android.widget.Toast.makeText(this, "No recordings yet", android.widget.Toast.LENGTH_SHORT).show(); return }
+        android.app.AlertDialog.Builder(this).setTitle("Share recorded track")
+            .setItems(files.map { it.nameWithoutExtension }.toTypedArray()) { _, index -> shareRecording(files[index]) }.show()
+    }
+    private fun shareRecording(file: File) {
+        val points = RecordedTrack.read(file)
+        if (points.isEmpty()) { android.widget.Toast.makeText(this, "No GPS points recorded yet", android.widget.Toast.LENGTH_LONG).show(); return }
+        try {
+            val directory = File(filesDir, "exports").apply { mkdirs() }
+            val export = File(directory, file.nameWithoutExtension + ".gpx")
+            export.writeText(RecordedTrack.gpx(file.nameWithoutExtension, points))
+            val uri = android.net.Uri.Builder().scheme("content").authority("$packageName.files").appendPath("gpx").appendPath(export.name).build()
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/gpx+xml"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, file.nameWithoutExtension)
+                clipData = android.content.ClipData.newRawUri("Recorded trail", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share GPX track"))
+        } catch (_: Exception) { android.widget.Toast.makeText(this, "Could not share this track", android.widget.Toast.LENGTH_LONG).show() }
+    }
+    private fun updateRecording() {
+        val running = RecordingService.running
+        recordButton.contentDescription = if (running) "Stop recording" else "Start recording"
+        recordButton.setImageDrawable(android.graphics.drawable.GradientDrawable().apply {
+            shape = if (running) android.graphics.drawable.GradientDrawable.RECTANGLE else android.graphics.drawable.GradientDrawable.OVAL
+            setColor(Color.RED); setSize(dp(24), dp(24)); if (running) cornerRadius = dp(3).toFloat()
+        })
+        val file = latestRecording()
+        if (file != null && (file.name != displayedTrack || file.length() != displayedLength)) {
+            displayedTrack = file.name; displayedLength = file.length()
+            val points = RecordedTrack.read(file)
+            recordedPointCount = points.size
+            recordingOverlay.items.clear()
+            val segments = mutableListOf<MutableList<GeoPoint>>()
+            points.forEachIndexed { index, point ->
+                if (index == 0 || point.time - points[index - 1].time > 90_000) segments.add(mutableListOf())
+                segments.last().add(GeoPoint(point.latitude, point.longitude))
+            }
+            for (segment in segments.filter { it.size >= 2 }) recordingOverlay.add(Polyline(map).apply {
+                setPoints(segment); title = "Recorded trail"; outlinePaint.color = Color.rgb(21, 101, 192); outlinePaint.strokeWidth = dp(4).toFloat()
+            })
+            map.invalidate()
+        }
+        recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30 seconds" else if (file != null) "Recorded track saved • Trails menu → Share GPX" else ""
+        recordStatus.setTextColor(if (running) Color.RED else Color.DKGRAY)
+    }
+
+    private fun refreshTrails() {
+        if (refreshingTrails || destroyed) return
+        refreshingTrails = true
+        trailStatus.text = if (trailDocument == null) "Loading trails…" else "Refreshing trails…"
+        val needsCache = trailDocument == null
+        trailExecutor.execute {
+            if (needsCache) {
+                trailRepository.cached()?.let { cached -> runOnUiThread {
+                    if (!destroyed) { showTrails(cached); trailStatus.text = "${cached.name} • cached • refreshing…" }
+                } }
+            }
+            val result = runCatching { trailRepository.refresh() }
+            runOnUiThread {
+                if (!destroyed) {
+                    refreshingTrails = false
+                    result.fold(onSuccess = { document ->
+                        showTrails(document)
+                        trailStatus.text = "${document.name} • ${document.features.size} features • updated"
+                    }, onFailure = {
+                        trailStatus.text = if (trailDocument != null) "${trailDocument!!.name} • cached • refresh failed"
+                                           else "Trails unavailable — check connection and map sharing"
+                    })
+                }
+            }
+        }
+    }
+    private fun showTrails(document: TrailKml.Document) {
+        trailDocument = document
+        trailOverlay.items.clear()
+        for (feature in document.features.sortedBy { if (it.kind == "Polygon") 0 else if (it.kind == "LineString") 1 else 2 }) {
+            val points = feature.points.map { GeoPoint(it.latitude, it.longitude) }
+            when (feature.kind) {
+                "LineString" -> trailOverlay.add(Polyline(map).apply {
+                    setPoints(points)
+                    title = feature.name
+                    outlinePaint.color = feature.style.lineColor
+                    outlinePaint.strokeWidth = dp(feature.style.width.toInt().coerceAtLeast(2)).toFloat()
+                })
+                "Polygon" -> trailOverlay.add(Polygon(map).apply {
+                    setPoints(points)
+                    holes = feature.holes.map { ring -> ring.map { GeoPoint(it.latitude, it.longitude) } }
+                    title = feature.name
+                    fillPaint.color = if (feature.style.fill) feature.style.fillColor else Color.TRANSPARENT
+                    outlinePaint.color = if (feature.style.outline) feature.style.lineColor else Color.TRANSPARENT
+                    outlinePaint.strokeWidth = dp(2).toFloat()
+                })
+                "Point" -> trailOverlay.add(Marker(map).apply {
+                    position = points.first()
+                    title = feature.name
+                    val resource = when (feature.style.iconId) {
+                        "1763" -> R.drawable.mymaps_1763
+                        "1899" -> R.drawable.mymaps_1899
+                        "1205" -> R.drawable.mymaps_1205
+                        "503" -> R.drawable.mymaps_503
+                        else -> 0
+                    }
+                    if (resource != 0) {
+                        val bitmap = android.graphics.BitmapFactory.decodeResource(resources, resource)
+                        val width = dp((28 * feature.style.iconScale).toInt())
+                        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, width, (width * bitmap.height.toFloat() / bitmap.width).toInt().coerceAtLeast(1), true)
+                        icon = android.graphics.drawable.BitmapDrawable(resources, scaled).apply {
+                            if (feature.style.iconId == "503") setTint(feature.style.iconColor)
+                        }
+                    }
+                    setAnchor(Marker.ANCHOR_CENTER, if (feature.style.iconId == "1763") Marker.ANCHOR_CENTER else Marker.ANCHOR_BOTTOM)
+                })
+            }
+        }
+        trailOverlay.isEnabled = trailsVisible
+        map.invalidate()
+    }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun hasPermission() = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    private fun requestLocationPermission() = requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
+    private fun refreshStatus() {
+        status.text = when {
+            !hasPermission() -> "Location permission needed — tap Recenter"
+            current == null -> "Waiting for location — check that Location is enabled"
+            following -> "Following GPS • accuracy ±${current!!.accuracy.toInt()} m"
+            else -> "Map paused • tap Recenter to follow GPS"
+        }
+    }
+    @Suppress("MissingPermission")
+    private fun startLocation() {
+        if (!active || !hasPermission()) { refreshStatus(); return }
+        manager.removeUpdates(this)
+        val fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val providers = listOfNotNull(if (fine) LocationManager.GPS_PROVIDER else null, LocationManager.NETWORK_PROVIDER)
+        var newest: Location? = null
+        for (provider in providers) {
+            if (!manager.allProviders.contains(provider) || !manager.isProviderEnabled(provider)) continue
+            try {
+                manager.requestLocationUpdates(provider, 1000L, 2f, this)
+                val cached = manager.getLastKnownLocation(provider)
+                if (cached != null && (newest == null || cached.elapsedRealtimeNanos > newest.elapsedRealtimeNanos)) newest = cached
+            } catch (_: SecurityException) { }
+        }
+        newest?.let { if (android.os.SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < 120_000_000_000L) onLocationChanged(it) }
+        refreshStatus()
+    }
+    override fun onLocationChanged(location: Location) {
+        val previous = current
+        if (previous != null && location.elapsedRealtimeNanos < previous.elapsedRealtimeNanos) return
+        current = location
+        if (following) map.controller.setCenter(GeoPoint(location.latitude, location.longitude))
+        map.invalidate()
+        refreshStatus()
+    }
+    override fun onProviderEnabled(provider: String) { startLocation() }
+    override fun onProviderDisabled(provider: String) { current = null; map.invalidate(); startLocation() }
+    @Deprecated("Legacy callback")
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) { }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1) startLocation()
+    }
+    override fun onResume() { super.onResume(); active = true; map.onResume(); startLocation(); recordingHandler.removeCallbacks(recordingTick); recordingHandler.post(recordingTick) }
+    override fun onPause() {
+        active = false
+        recordingHandler.removeCallbacks(recordingTick)
+        manager.removeUpdates(this)
+        prefs.edit().putFloat("zoom", map.zoomLevelDouble.toFloat()).putFloat("lat", map.mapCenter.latitude.toFloat()).putFloat("lon", map.mapCenter.longitude.toFloat()).apply()
+        map.onPause()
+        super.onPause()
+    }
+    override fun onDestroy() { destroyed = true; trailExecutor.shutdownNow(); map.onDetach(); super.onDestroy() }
+}
