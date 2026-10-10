@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'basemaps.json'
       - '*.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - 'app/**'
+      - 'basemaps.json'
       - '*.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'

@@ -1,6 +1,6 @@
 # Trail — project context and requirements
 
-Last collated: 2026-10-10. This document describes the agreed product requirements and the implementation as of Trail 1.7. Use it to resume development without needing the original conversation. Keep it current when behavior or requirements change.
+Last collated: 2026-10-10. This document describes the agreed product requirements and the implementation as of Trail 1.8. Use it to resume development without needing the original conversation. Keep it current when behavior or requirements change.
 
 ## Purpose and scope
 
@@ -109,7 +109,7 @@ Reports capture a fixed location instead of silently updating while the user edi
 - osmdroid is archived upstream and currently pinned. Replacing it is a future implementation decision, not an agreed new feature.
 - iPhone support was discussed and deferred. There is no iOS target or shared Kotlin Multiplatform UI currently.
 
-Preserve application ID and the included development signing key across builds so APKs update existing installations. The key alias is androiddebugkey and its standard debug passwords are android. These are personal development APKs, not a Play Store release. App version at this snapshot is 1.7 / versionCode 8; increment version metadata when releasing application changes.
+Preserve application ID and the included development signing key across builds so APKs update existing installations. The key alias is androiddebugkey and its standard debug passwords are android. These are personal development APKs, not a Play Store release. App version at this snapshot is 1.8 / versionCode 9; increment version metadata when releasing application changes.
 
 ## Repository, automated builds, and distribution
 
@@ -132,3 +132,9 @@ Ten unit tests passed with the Trail 1.7 build, covering KML parsing, GPX recove
 Keep manual phone checks for GPS acquisition/permissions, map gestures, a multi-minute screen-off recording, stop/share behavior, photo capture/cancel/retake, activity rotation, and Gmail text/photo/recipient handling. User confirmation of screen-locked recording is useful evidence but does not cover every device or camera/share app.
 
 When editing, preserve the simple two-corner controls, current-location behavior, exact Trails-layer filtering, existing icon artwork, blue recorded line, editable report, optional photo flow, and install compatibility. Update this document when requirements or implementation boundaries change; do not silently turn previously discussed options into claimed implemented features.
+
+## Configurable basemap selector (1.8)
+
+A selector at the top-left of the map lists every entry in repository-root basemaps.json. Each entry requires name and url; the HTTPS URL uses {z}, {x}, and {y} placeholders for standard 256-pixel Web Mercator tiles at supported app zoom levels 3–19. Optional attribution and attributionUrl update the attribution footer. The configuration is bundled as an Android asset by Gradle, so adding entries requires rebuilding, not changing Kotlin code. Config changes also trigger Actions.
+
+Initial choices are openstreetmap and njsatellite (2020 NJ aerial imagery). OSM is the initial default; the user's choice is remembered. Switching preserves position, zoom, trails, recording, and report controls. Each URL has its own disk-cache namespace so tiles from different basemaps cannot mix. NJ ArcGIS takes /tile/{z}/{y}/{x}, despite the initially suggested x/y order. The service exposes 256-pixel EPSG:3857 tiles; imagery coverage is New Jersey.

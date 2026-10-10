@@ -18,7 +18,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Overlay
@@ -32,6 +31,10 @@ import java.util.concurrent.Executors
 import java.io.File
 
 class MainActivity : Activity(), LocationListener {
+    private lateinit var basemaps: List<Basemap>
+    private lateinit var selectedBasemap: Basemap
+    private lateinit var basemapButton: Button
+    private lateinit var attribution: TextView
     private lateinit var map: MapView
     private lateinit var status: TextView
     private lateinit var recenter: Button
@@ -80,7 +83,7 @@ class MainActivity : Activity(), LocationListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
-            userAgentValue = "Trail/1.7 (net.pocketmap; personal Android map)"
+            userAgentValue = "Trail/1.8 (net.pocketmap; personal Android map)"
             osmdroidBasePath = File(filesDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "tiles")
         }
@@ -101,8 +104,11 @@ class MainActivity : Activity(), LocationListener {
         root.addView(trailStatus)
         recordStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(4)) }
         root.addView(recordStatus)
+        basemaps = Basemap.load(assets)
+        selectedBasemap = basemaps.find { it.name == prefs.getString("basemap", "openstreetmap") }
+            ?: basemaps.find { it.name == "openstreetmap" } ?: basemaps.first()
         map = MapView(this).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            setTileSource(selectedBasemap.tileSource())
             setMultiTouchControls(true)
             minZoomLevel = 3.0
             maxZoomLevel = 19.0
@@ -126,6 +132,33 @@ class MainActivity : Activity(), LocationListener {
         }
         val mapFrame = android.widget.FrameLayout(this)
         mapFrame.addView(map, android.widget.FrameLayout.LayoutParams(-1, -1))
+        basemapButton = Button(this).apply {
+            text = selectedBasemap.name + " ▾"
+            contentDescription = "Choose basemap: ${selectedBasemap.name}"
+            elevation = dp(6).toFloat()
+            setOnClickListener { anchor ->
+                PopupMenu(this@MainActivity, anchor).apply {
+                    basemaps.forEachIndexed { index, basemap ->
+                        menu.add(0, index, index, basemap.name).apply {
+                            isCheckable = true
+                            isChecked = basemap.name == selectedBasemap.name
+                        }
+                    }
+                    setOnMenuItemClickListener { item ->
+                        selectedBasemap = basemaps[item.itemId]
+                        map.setTileSource(selectedBasemap.tileSource())
+                        prefs.edit().putString("basemap", selectedBasemap.name).apply()
+                        basemapButton.text = selectedBasemap.name + " ▾"
+                        basemapButton.contentDescription = "Choose basemap: ${selectedBasemap.name}"
+                        attribution.text = selectedBasemap.attribution
+                        map.invalidate()
+                        true
+                    }
+                    show()
+                }
+            }
+        }
+        mapFrame.addView(basemapButton, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(12), dp(12), dp(12), dp(12)) })
         recordButton = android.widget.ImageButton(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.WHITE) }
             elevation = dp(6).toFloat()
@@ -184,12 +217,13 @@ class MainActivity : Activity(), LocationListener {
             }
         })
         root.addView(buttons)
-        root.addView(TextView(this).apply {
-            text = "© OpenStreetMap contributors"
+        attribution = TextView(this).apply {
+            text = selectedBasemap.attribution
             gravity = Gravity.CENTER
             setPadding(0, dp(5), 0, dp(8))
-            setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.openstreetmap.org/copyright"))) }
-        })
+            setOnClickListener { selectedBasemap.attributionUrl?.let { url -> startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } }
+        }
+        root.addView(attribution)
         setContentView(root)
         trailRepository = TrailRepository(filesDir)
         refreshTrails()

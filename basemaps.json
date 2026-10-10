@@ -1,0 +1,4 @@
+[
+  {"name":"openstreetmap", "url":"https://tile.openstreetmap.org/{z}/{x}/{y}.png", "attribution":"© OpenStreetMap contributors", "attributionUrl":"https://www.openstreetmap.org/copyright"},
+  {"name":"njsatellite", "url":"https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_2020_NJ_WM/MapServer/tile/{z}/{y}/{x}", "attribution":"2020 aerial imagery · NJOIT Office of GIS", "attributionUrl":"https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_2020_NJ_WM/MapServer"}
+]
