@@ -55,11 +55,14 @@ class MainActivity : Activity(), LocationListener {
     private var displayedLength = -1L
     private var recordedPointCount = 0
     private val recordingTick = object : Runnable {
-        override fun run() { updateRecording(); if (active) recordingHandler.postDelayed(this, 1000) }
+        override fun run() { updateRecording(); if (facingHeading != null) map.invalidate(); if (active) recordingHandler.postDelayed(this, 1000) }
     }
     private var following = true
     private var active = false
     private var current: Location? = null
+    private lateinit var phoneHeading: PhoneHeading
+    private var facingHeading: Float? = null
+    private var headingTime = 0L
     private var reportText: String? = null
     private var reportAccuracy = 0
     private var reportPhoto: String? = null
@@ -73,17 +76,40 @@ class MainActivity : Activity(), LocationListener {
             if (shadow) return
             val fix = current ?: return
             val point = mapView.projection.toPixels(GeoPoint(fix.latitude, fix.longitude), null)
-            paint.color = Color.WHITE
-            canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(10).toFloat(), paint)
-            paint.color = Color.rgb(21, 101, 192)
-            canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(7).toFloat(), paint)
+            val heading = facingHeading?.takeIf { android.os.SystemClock.elapsedRealtime() - headingTime < 5_000L }
+            paint.style = Paint.Style.FILL
+            if (heading == null) {
+                paint.color = Color.WHITE
+                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(10).toFloat(), paint)
+                paint.color = Color.rgb(21, 101, 192)
+                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), dp(7).toFloat(), paint)
+            } else {
+                val saved = canvas.save()
+                canvas.translate(point.x.toFloat(), point.y.toFloat())
+                canvas.rotate(heading)
+                val triangle = android.graphics.Path().apply {
+                    moveTo(0f, -dp(15).toFloat())
+                    lineTo(dp(10).toFloat(), dp(10).toFloat())
+                    lineTo(-dp(10).toFloat(), dp(10).toFloat())
+                    close()
+                }
+                paint.color = Color.WHITE
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = dp(4).toFloat()
+                paint.strokeJoin = Paint.Join.ROUND
+                canvas.drawPath(triangle, paint)
+                paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(21, 101, 192)
+                canvas.drawPath(triangle, paint)
+                canvas.restoreToCount(saved)
+            }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
-            userAgentValue = "Trail/1.8 (net.pocketmap; personal Android map)"
+            userAgentValue = "Trail/1.9 (net.pocketmap; personal Android map)"
             osmdroidBasePath = File(filesDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "tiles")
         }
@@ -225,6 +251,13 @@ class MainActivity : Activity(), LocationListener {
         }
         root.addView(attribution)
         setContentView(root)
+        @Suppress("DEPRECATION")
+        val rotation = { windowManager.defaultDisplay.rotation }
+        phoneHeading = PhoneHeading(this, rotation, { current }) { heading ->
+            facingHeading = heading
+            headingTime = android.os.SystemClock.elapsedRealtime()
+            map.invalidate()
+        }
         trailRepository = TrailRepository(filesDir)
         refreshTrails()
         if (!hasPermission()) requestLocationPermission()
@@ -554,9 +587,10 @@ class MainActivity : Activity(), LocationListener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 1) startLocation()
     }
-    override fun onResume() { super.onResume(); active = true; map.onResume(); startLocation(); recordingHandler.removeCallbacks(recordingTick); recordingHandler.post(recordingTick) }
+    override fun onResume() { super.onResume(); active = true; phoneHeading.start(); map.onResume(); startLocation(); recordingHandler.removeCallbacks(recordingTick); recordingHandler.post(recordingTick) }
     override fun onPause() {
         active = false
+        phoneHeading.stop()
         recordingHandler.removeCallbacks(recordingTick)
         manager.removeUpdates(this)
         prefs.edit().putFloat("zoom", map.zoomLevelDouble.toFloat()).putFloat("lat", map.mapCenter.latitude.toFloat()).putFloat("lon", map.mapCenter.longitude.toFloat()).apply()
