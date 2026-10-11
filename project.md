@@ -144,3 +144,7 @@ Initial choices are openstreetmap and njsatellite (2020 NJ aerial imagery). OSM 
 The blue GPS dot becomes a blue triangle when the phone reports a reliable compass heading. Its tip follows the top of the displayed screen, including landscape rotation, and updates while stationary. The map stays north-up; this is phone-facing direction, not GPS travel bearing. Rotation-vector sensors are preferred, with geomagnetic rotation-vector fallback. Magnetic heading is corrected to true north using the current GPS position, and circular smoothing handles crossing 0/360 degrees.
 
 If no supported heading sensor is available, accuracy is low/unreliable, the top edge is almost vertical (horizontal facing direction undefined), or heading data is older than five seconds, show the original dot. Sensor listening runs only while the activity is visible. Recording remains independent. Phone checks: turn in place outdoors, rotate the display, compare to known directions, and check magnetic interference/low-accuracy fallback.
+
+## Live recording connector (1.10)
+
+While recording is on, display a blue segment from the latest saved 30-second sample to the current foreground GPS position. It moves on each foreground location update and starts from the newest saved sample when recording appends another point. The segment is display-only: it does not change sampling, CSV, or exported GPX. Hide it when recording stops, before the first saved point, for stale/backward fixes, or across a gap over 90 seconds. The saved blue track remains visible when stopped.

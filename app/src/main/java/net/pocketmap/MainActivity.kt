@@ -50,6 +50,28 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var recordButton: android.widget.ImageButton
     private lateinit var recordStatus: TextView
     private val recordingOverlay = FolderOverlay()
+    private var lastRecordedPoint: RecordedTrack.Point? = null
+    // Display-only connector: never append foreground fixes to the saved track.
+    private val liveRecordingOverlay = object : Overlay() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(21, 101, 192)
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+        override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+            if (shadow || !RecordingService.running) return
+            val last = lastRecordedPoint ?: return
+            val fix = current ?: return
+            if (prefs.getString("recorded_track", null) != displayedTrack) return
+            // Follow existing gap handling and do not connect stale/backward fixes.
+            if (fix.time < last.time || fix.time - last.time > 90_000L ||
+                android.os.SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > 30_000_000_000L) return
+            val from = mapView.projection.toPixels(GeoPoint(last.latitude, last.longitude), null)
+            val to = mapView.projection.toPixels(GeoPoint(fix.latitude, fix.longitude), null)
+            paint.strokeWidth = dp(4).toFloat()
+            canvas.drawLine(from.x.toFloat(), from.y.toFloat(), to.x.toFloat(), to.y.toFloat(), paint)
+        }
+    }
     private val recordingHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var displayedTrack = ""
     private var displayedLength = -1L
@@ -109,7 +131,7 @@ class MainActivity : Activity(), LocationListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
-            userAgentValue = "Trail/1.9 (net.pocketmap; personal Android map)"
+            userAgentValue = "Trail/1.10 (net.pocketmap; personal Android map)"
             osmdroidBasePath = File(filesDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "tiles")
         }
@@ -142,6 +164,7 @@ class MainActivity : Activity(), LocationListener {
             controller.setCenter(GeoPoint(prefs.getFloat("lat", 40.7f).toDouble(), prefs.getFloat("lon", -74.7f).toDouble()))
             overlays.add(trailOverlay)
             overlays.add(recordingOverlay)
+            overlays.add(liveRecordingOverlay)
             overlays.add(dot)
         }
         var startX = 0f
@@ -398,6 +421,8 @@ class MainActivity : Activity(), LocationListener {
 
     private fun toggleRecording() {
         if (RecordingService.running) {
+            lastRecordedPoint = null
+            map.invalidate()
             stopService(Intent(this, RecordingService::class.java))
             android.app.AlertDialog.Builder(this).setTitle("Recording saved")
                 .setMessage("Your track is saved on this phone.")
@@ -455,6 +480,7 @@ class MainActivity : Activity(), LocationListener {
             displayedTrack = file.name; displayedLength = file.length()
             val points = RecordedTrack.read(file)
             recordedPointCount = points.size
+            lastRecordedPoint = points.lastOrNull()
             recordingOverlay.items.clear()
             val segments = mutableListOf<MutableList<GeoPoint>>()
             points.forEachIndexed { index, point ->
@@ -466,6 +492,7 @@ class MainActivity : Activity(), LocationListener {
             })
             map.invalidate()
         }
+        map.invalidate() // Also remove the live segment after a notification stop or stale fix.
         recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30 seconds" else if (file != null) "Recorded track saved • Trails menu → Share GPX" else ""
         recordStatus.setTextColor(if (running) Color.RED else Color.DKGRAY)
     }
