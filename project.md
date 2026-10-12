@@ -148,3 +148,9 @@ If no supported heading sensor is available, accuracy is low/unreliable, the top
 ## Live recording connector (1.10)
 
 While recording is on, display a blue segment from the latest saved 30-second sample to the current foreground GPS position. It moves on each foreground location update and starts from the newest saved sample when recording appends another point. The segment is display-only: it does not change sampling, CSV, or exported GPX. Hide it when recording stops, before the first saved point, for stale/backward fixes, or across a gap over 90 seconds. The saved blue track remains visible when stopped.
+
+## Play Store internal testing setup (2026-10-12)
+
+The developer account is approved and Trail has an internal testing draft with Play App Signing enabled. Package ID remains net.pocketmap. Play signs installed APKs; a separate private PKCS12 upload key (alias trail-upload) signs uploaded bundles. Never commit that key or its password. The existing public development APK signing stays unchanged; transitioning to Google-signed installations requires uninstalling the development app, so export saved tracks first.
+
+.github/workflows/play-bundle.yml builds signed release AABs on relevant main pushes and manual dispatch once repository secrets TRAIL_UPLOAD_KEYSTORE_BASE64 and TRAIL_UPLOAD_PASSWORD are set. Use the same password for the PKCS12 store and key. Before secrets are configured, the bundle job is skipped. Release tests, lint and signature verification precede the Trail-play-bundle artifact. First upload is manual in Play Console. Automated Play API uploads are not yet configured; they require a service account with access to this app and Android Publisher API authorization. Increment versionCode for each subsequent Play upload. Tester selection and first release publication remain Play Console steps.

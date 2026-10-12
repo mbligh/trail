@@ -4,6 +4,17 @@ android {
     compileSdk = 36
     defaultConfig { applicationId = "net.pocketmap"; minSdk = 26; targetSdk = 36; versionCode = 11; versionName = "1.10" }
     signingConfigs.getByName("debug") { storeFile = rootProject.file("development-signing.jks"); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" }
+    signingConfigs.create("upload") {
+        System.getenv("TRAIL_UPLOAD_KEYSTORE")?.let { storeFile = file(it) }
+        storePassword = System.getenv("TRAIL_UPLOAD_PASSWORD")
+        keyAlias = "trail-upload"
+        keyPassword = System.getenv("TRAIL_UPLOAD_PASSWORD")
+        storeType = "PKCS12"
+    }
+    buildTypes.getByName("release") {
+        signingConfig = signingConfigs.getByName("upload")
+        isMinifyEnabled = false
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
