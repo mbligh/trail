@@ -131,7 +131,7 @@ class MainActivity : Activity(), LocationListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
-            userAgentValue = "Trail/1.11 (net.pocketmap; personal Android map)"
+            userAgentValue = "Trail/1.12 (net.pocketmap; personal Android map)"
             osmdroidBasePath = File(filesDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "tiles")
         }
@@ -146,12 +146,20 @@ class MainActivity : Activity(), LocationListener {
             }
             insets
         }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            setBackgroundColor(Color.WHITE)
+        }
+        val statusColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        header.addView(statusColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        root.addView(header)
         status = TextView(this).apply { setPadding(dp(12), dp(8), dp(12), dp(8)); text = "Waiting for location…" }
-        root.addView(status)
+        statusColumn.addView(status)
         trailStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(6)); text = "Loading trails…" }
-        root.addView(trailStatus)
+        statusColumn.addView(trailStatus)
         recordStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(4)) }
-        root.addView(recordStatus)
+        statusColumn.addView(recordStatus)
         basemaps = Basemap.load(assets)
         selectedBasemap = basemaps.find { it.name == prefs.getString("basemap", "openstreetmap") }
             ?: basemaps.find { it.name == "openstreetmap" } ?: basemaps.first()
@@ -275,13 +283,12 @@ class MainActivity : Activity(), LocationListener {
         attribution = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 12f
-            maxWidth = resources.displayMetrics.widthPixels - dp(32)
+            maxWidth = resources.displayMetrics.widthPixels / 2
             setTextColor(Color.DKGRAY)
             setPadding(dp(12), dp(8), dp(12), dp(8))
             minHeight = dp(48)
             minWidth = dp(48)
             background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(12).toFloat() }
-            elevation = dp(4).toFloat()
             contentDescription = "Map attribution and licences"
             setOnClickListener {
                 val credits = TextView(this@MainActivity).apply {
@@ -295,7 +302,7 @@ class MainActivity : Activity(), LocationListener {
                 android.app.AlertDialog.Builder(this@MainActivity).setTitle("Map credits").setView(credits).setPositiveButton("Done", null).show()
             }
         }
-        mapFrame.addView(attribution, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(80) })
+        header.addView(attribution, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.END })
         showAttribution()
         setContentView(root)
         @Suppress("DEPRECATION")
