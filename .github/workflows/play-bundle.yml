@@ -23,7 +23,7 @@ jobs:
       ready: ${{ steps.check.outputs.ready }}
       publish: ${{ steps.check.outputs.publish }}
     steps:
-      - name: Check signing setup
+      - name: Check signing and Play upload credentials
         id: check
         env:
           UPLOAD_KEY: ${{ secrets.TRAIL_UPLOAD_KEYSTORE_BASE64 }}
