@@ -37,7 +37,7 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var attribution: TextView
     private lateinit var map: MapView
     private lateinit var status: TextView
-    private lateinit var recenter: Button
+    private lateinit var recenter: android.widget.ImageButton
     private lateinit var manager: LocationManager
     private val trailExecutor = Executors.newSingleThreadExecutor()
     private lateinit var trailStatus: TextView
@@ -131,7 +131,7 @@ class MainActivity : Activity(), LocationListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().apply {
-            userAgentValue = "Trail/1.10 (net.pocketmap; personal Android map)"
+            userAgentValue = "Trail/1.11 (net.pocketmap; personal Android map)"
             osmdroidBasePath = File(filesDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "tiles")
         }
@@ -159,8 +159,8 @@ class MainActivity : Activity(), LocationListener {
             setTileSource(selectedBasemap.tileSource())
             setMultiTouchControls(true)
             minZoomLevel = 3.0
-            maxZoomLevel = 19.0
-            controller.setZoom(prefs.getFloat("zoom", 17f).toDouble())
+            maxZoomLevel = selectedBasemap.maxZoom.toDouble()
+            controller.setZoom(prefs.getFloat("zoom", 17f).toDouble().coerceAtMost(selectedBasemap.maxZoom.toDouble()))
             controller.setCenter(GeoPoint(prefs.getFloat("lat", 40.7f).toDouble(), prefs.getFloat("lon", -74.7f).toDouble()))
             overlays.add(trailOverlay)
             overlays.add(recordingOverlay)
@@ -196,10 +196,12 @@ class MainActivity : Activity(), LocationListener {
                     setOnMenuItemClickListener { item ->
                         selectedBasemap = basemaps[item.itemId]
                         map.setTileSource(selectedBasemap.tileSource())
+                        map.maxZoomLevel = selectedBasemap.maxZoom.toDouble()
+                        if (map.zoomLevelDouble > selectedBasemap.maxZoom) map.controller.setZoom(selectedBasemap.maxZoom.toDouble())
                         prefs.edit().putString("basemap", selectedBasemap.name).apply()
                         basemapButton.text = selectedBasemap.name + " ▾"
                         basemapButton.contentDescription = "Choose basemap: ${selectedBasemap.name}"
-                        attribution.text = selectedBasemap.attribution
+                        showAttribution()
                         map.invalidate()
                         true
                     }
@@ -225,8 +227,12 @@ class MainActivity : Activity(), LocationListener {
         }
         mapFrame.addView(flagButton, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
         root.addView(mapFrame, LinearLayout.LayoutParams(-1, 0, 1f))
-        recenter = Button(this).apply {
-            text = "Recenter / follow GPS"
+        recenter = android.widget.ImageButton(this).apply {
+            contentDescription = "Recenter and follow GPS"
+            background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.WHITE) }
+            elevation = dp(6).toFloat()
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            setImageResource(R.drawable.ic_recenter)
             setOnClickListener {
                 following = true
                 if (!hasPermission()) requestLocationPermission()
@@ -236,7 +242,7 @@ class MainActivity : Activity(), LocationListener {
             }
         }
         val buttons = LinearLayout(this)
-        buttons.addView(recenter, LinearLayout.LayoutParams(0, -2, 1f))
+        mapFrame.addView(recenter, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.END).apply { setMargins(dp(12), dp(12), dp(12), dp(12)) })
         buttons.addView(Button(this).apply {
             text = "Trails"
             setOnClickListener { button ->
@@ -267,12 +273,30 @@ class MainActivity : Activity(), LocationListener {
         })
         root.addView(buttons)
         attribution = TextView(this).apply {
-            text = selectedBasemap.attribution
             gravity = Gravity.CENTER
-            setPadding(0, dp(5), 0, dp(8))
-            setOnClickListener { selectedBasemap.attributionUrl?.let { url -> startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } }
+            textSize = 12f
+            maxWidth = resources.displayMetrics.widthPixels - dp(32)
+            setTextColor(Color.DKGRAY)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            minHeight = dp(48)
+            minWidth = dp(48)
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(12).toFloat() }
+            elevation = dp(4).toFloat()
+            contentDescription = "Map attribution and licences"
+            setOnClickListener {
+                val credits = TextView(this@MainActivity).apply {
+                    setPadding(dp(20), dp(16), dp(20), dp(16))
+                    text = android.text.Html.fromHtml(
+                        selectedBasemap.attribution + (selectedBasemap.attributionUrl?.let { "<br><br><a href=\"$it\">Source and licence details</a>" } ?: "") +
+                        if (selectedBasemap.name == "opentopomap") "<br><br><a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap · ODbL</a><br><a href=\"https://creativecommons.org/licenses/by-sa/3.0/\">Map style · CC BY-SA 3.0</a>" else "",
+                        android.text.Html.FROM_HTML_MODE_LEGACY)
+                    movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                }
+                android.app.AlertDialog.Builder(this@MainActivity).setTitle("Map credits").setView(credits).setPositiveButton("Done", null).show()
+            }
         }
-        root.addView(attribution)
+        mapFrame.addView(attribution, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(80) })
+        showAttribution()
         setContentView(root)
         @Suppress("DEPRECATION")
         val rotation = { windowManager.defaultDisplay.rotation }
@@ -291,6 +315,13 @@ class MainActivity : Activity(), LocationListener {
             cameraPhoto = it.getString("cameraPhoto")
         }
         if (reportText != null && cameraPhoto == null) showReport()
+    }
+
+    private val collapseAttribution = Runnable { attribution.text = "ⓘ" }
+    private fun showAttribution() {
+        attribution.removeCallbacks(collapseAttribution)
+        attribution.text = selectedBasemap.attribution
+        attribution.postDelayed(collapseAttribution, 5000)
     }
 
     private fun shareCurrentLocation() {
@@ -573,6 +604,7 @@ class MainActivity : Activity(), LocationListener {
     private fun hasPermission() = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
     private fun requestLocationPermission() = requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 1)
     private fun refreshStatus() {
+        recenter.imageTintList = android.content.res.ColorStateList.valueOf(if (following) Color.rgb(21, 101, 192) else Color.DKGRAY)
         status.text = when {
             !hasPermission() -> "Location permission needed — tap Recenter"
             current == null -> "Waiting for location — check that Location is enabled"

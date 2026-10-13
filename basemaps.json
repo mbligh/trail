@@ -1,4 +1,21 @@
 [
-  {"name":"openstreetmap", "url":"https://tile.openstreetmap.org/{z}/{x}/{y}.png", "attribution":"© OpenStreetMap contributors", "attributionUrl":"https://www.openstreetmap.org/copyright"},
-  {"name":"njsatellite", "url":"https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_2020_NJ_WM/MapServer/tile/{z}/{y}/{x}", "attribution":"2020 aerial imagery · NJOIT Office of GIS", "attributionUrl":"https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_2020_NJ_WM/MapServer"}
+  {
+    "name": "openstreetmap",
+    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "attribution": "© OpenStreetMap contributors",
+    "attributionUrl": "https://www.openstreetmap.org/copyright"
+  },
+  {
+    "name": "njsatellite",
+    "url": "https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_2020_NJ_WM/MapServer/tile/{z}/{y}/{x}",
+    "attribution": "2020 aerial imagery · NJOIT Office of GIS",
+    "attributionUrl": "https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_2020_NJ_WM/MapServer"
+  },
+  {
+    "name": "opentopomap",
+    "url": "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+    "maxZoom": 17,
+    "attribution": "© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC BY-SA 3.0)",
+    "attributionUrl": "https://opentopomap.org/about#verwendung"
+  }
 ]
