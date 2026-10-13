@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "net.pocketmap"
     compileSdk = 36
-    defaultConfig { applicationId = "net.pocketmap"; minSdk = 26; targetSdk = 36; versionCode = 12; versionName = "1.11" }
+    defaultConfig { applicationId = "net.pocketmap"; minSdk = 26; targetSdk = 36; versionCode = System.getenv("TRAIL_VERSION_CODE")?.toInt() ?: 12; versionName = "1.11" }
     signingConfigs.getByName("debug") { storeFile = rootProject.file("development-signing.jks"); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" }
     signingConfigs.create("upload") {
         System.getenv("TRAIL_UPLOAD_KEYSTORE")?.let { storeFile = file(it) }

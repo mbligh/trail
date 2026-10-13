@@ -1,4 +1,4 @@
-name: Build Play Store bundle
+name: Build and upload Play Store bundle
 on:
   push:
     branches: [main]
@@ -21,18 +21,26 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       ready: ${{ steps.check.outputs.ready }}
+      publish: ${{ steps.check.outputs.publish }}
     steps:
       - name: Check signing setup
         id: check
         env:
           UPLOAD_KEY: ${{ secrets.TRAIL_UPLOAD_KEYSTORE_BASE64 }}
           UPLOAD_PASSWORD: ${{ secrets.TRAIL_UPLOAD_PASSWORD }}
+          PLAY_ACCOUNT: ${{ secrets.TRAIL_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -n "$UPLOAD_KEY" ] && [ -n "$UPLOAD_PASSWORD" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Add TRAIL_UPLOAD_KEYSTORE_BASE64 and TRAIL_UPLOAD_PASSWORD repository secrets to enable signed Play bundles."
+          fi
+          if [ -n "$PLAY_ACCOUNT" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Add TRAIL_PLAY_SERVICE_ACCOUNT_JSON to enable automatic internal-track uploads."
           fi
   bundle:
     needs: configuration
@@ -61,6 +69,11 @@ jobs:
           umask 077
           mkdir -p .private-signing
           printf '%s' "$UPLOAD_KEY" | base64 --decode > "$TRAIL_UPLOAD_KEYSTORE"
+      - name: Assign unique Play version code
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: echo "TRAIL_VERSION_CODE=$((10000 + RUN_NUMBER * 100 + RUN_ATTEMPT))" >> "$GITHUB_ENV"
       - name: Test, lint, and build release bundle
         run: ./gradlew --no-daemon testReleaseUnitTest lintRelease bundleRelease
       - name: Verify bundle signature
@@ -74,6 +87,16 @@ jobs:
           name: Trail-play-bundle
           path: app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+      - name: Upload and publish to internal testing
+        if: needs.configuration.outputs.publish == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.TRAIL_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: net.pocketmap
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          tracks: internal
+          status: completed
+          releaseName: Trail build ${{ github.run_number }}.${{ github.run_attempt }}
       - name: Remove upload key
         if: always()
         run: rm -rf .private-signing
