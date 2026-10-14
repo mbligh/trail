@@ -466,7 +466,7 @@ class MainActivity : Activity(), LocationListener {
             stopService(Intent(this, RecordingService::class.java))
             android.app.AlertDialog.Builder(this).setTitle("Recording saved")
                 .setMessage("Your track is saved on this phone.")
-                .setPositiveButton("Share GPX") { _, _ -> latestRecording()?.let { shareRecording(it) } }
+                .setPositiveButton("Share KML") { _, _ -> latestRecording()?.let { shareRecording(it, false) } }
                 .setNegativeButton("Done", null).show()
             return
         }
@@ -490,7 +490,7 @@ class MainActivity : Activity(), LocationListener {
         android.app.AlertDialog.Builder(this).setTitle("Share recorded track")
             .setItems(files.map { it.nameWithoutExtension }.toTypedArray()) { _, index -> shareRecording(files[index], gpx) }.show()
     }
-    private fun shareRecording(file: File, gpx: Boolean = true) {
+    private fun shareRecording(file: File, gpx: Boolean = false) {
         val points = RecordedTrack.read(file)
         if (points.isEmpty()) { android.widget.Toast.makeText(this, "No GPS points recorded yet", android.widget.Toast.LENGTH_LONG).show(); return }
         try {
