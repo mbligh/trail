@@ -23,4 +23,48 @@ object RecordedTrack {
         }
         append("</trkseg></trk></gpx>\n")
     }
+    fun kml(name: String, points: List<Point>): String = buildString {
+        fun xml(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        append("<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><name>${xml(name)}</name>\n")
+        append("<Style id=\"good\"><LineStyle><color>ff00aa00</color><width>6</width></LineStyle></Style>\n")
+        append("<Style id=\"moderate\"><LineStyle><color>ff00ffff</color><width>6</width></LineStyle></Style>\n")
+        append("<Style id=\"poor\"><LineStyle><color>ff0000ff</color><width>6</width></LineStyle></Style>\n")
+        append("<Style id=\"unknown\"><LineStyle><color>ffff6515</color><width>6</width></LineStyle></Style>\n")
+        data class Edge(val a: Point, val b: Point, val style: String)
+        val edges = points.zipWithNext().mapNotNull { (a, b) ->
+            if (b.time - a.time > 90_000) null else {
+                val worst = listOfNotNull(a.accuracy, b.accuracy).maxOrNull()
+                val style = when {
+                    a.accuracy == null || b.accuracy == null -> "unknown"
+                    worst!! < 5f -> "good"
+                    worst <= 15f -> "moderate"
+                    else -> "poor"
+                }
+                Edge(a, b, style)
+            }
+        }
+        var i = 0
+        while (i < edges.size) {
+            val first = edges[i]
+            val segment = mutableListOf(first.a, first.b)
+            var j = i + 1
+            while (j < edges.size && edges[j].style == first.style && edges[j].a == segment.last()) {
+                segment.add(edges[j].b)
+                j++
+            }
+            val label = when (first.style) {
+                "good" -> "Good accuracy (&lt; 5 m)"
+                "moderate" -> "Moderate accuracy (5–15 m)"
+                "poor" -> "Poor accuracy (&gt; 15 m)"
+                else -> "Accuracy unavailable"
+            }
+            append("<Placemark><name>$label</name><styleUrl>#${first.style}</styleUrl><LineString><tessellate>1</tessellate><coordinates>\n")
+            segment.forEach { point -> append("${point.longitude},${point.latitude},${point.altitude ?: 0.0}\n") }
+            append("</coordinates></LineString></Placemark>\n")
+            i = j
+        }
+        append("</Document></kml>\n")
+    }
+
 }
