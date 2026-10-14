@@ -224,7 +224,7 @@ class MainActivity : Activity(), LocationListener {
             scaleType = android.widget.ImageView.ScaleType.CENTER
             setOnClickListener { toggleRecording() }
         }
-        mapFrame.addView(recordButton, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.END).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        mapFrame.addView(recordButton, android.widget.FrameLayout.LayoutParams(dp(37), dp(37), Gravity.BOTTOM or Gravity.END).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
         val flagButton = android.widget.ImageButton(this).apply {
             contentDescription = "Share current location"
             background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.WHITE) }
@@ -233,7 +233,7 @@ class MainActivity : Activity(), LocationListener {
             setImageResource(R.drawable.ic_report_flag)
             setOnClickListener { shareCurrentLocation() }
         }
-        mapFrame.addView(flagButton, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        mapFrame.addView(flagButton, android.widget.FrameLayout.LayoutParams(dp(37), dp(37), Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
         root.addView(mapFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         recenter = android.widget.ImageButton(this).apply {
             contentDescription = "Recenter and follow GPS"
