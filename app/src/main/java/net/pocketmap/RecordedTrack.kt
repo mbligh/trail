@@ -4,11 +4,11 @@ import java.io.File
 import java.time.Instant
 
 object RecordedTrack {
-    data class Point(val latitude: Double, val longitude: Double, val time: Long, val altitude: Double?)
+    data class Point(val latitude: Double, val longitude: Double, val time: Long, val altitude: Double?, val accuracy: Float? = null)
     fun read(file: File): List<Point> = if (!file.exists()) emptyList() else file.useLines { lines ->
         lines.mapNotNull { line -> runCatching {
             val p = line.split(',')
-            Point(p[0].toDouble(), p[1].toDouble(), p[2].toLong(), p.getOrNull(3)?.takeIf { it.isNotBlank() }?.toDouble())
+            Point(p[0].toDouble(), p[1].toDouble(), p[2].toLong(), p.getOrNull(3)?.takeIf { it.isNotBlank() }?.toDouble(), p.getOrNull(4)?.takeIf { it.isNotBlank() }?.toFloat())
         }.getOrNull() }.toList()
     }
     fun gpx(name: String, points: List<Point>): String = buildString {
