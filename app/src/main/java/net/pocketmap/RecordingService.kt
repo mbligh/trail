@@ -56,7 +56,7 @@ class RecordingService : Service(), LocationListener {
         if (now - location.elapsedRealtimeNanos > 45_000_000_000L) return
         if (lastSample != Long.MIN_VALUE && location.elapsedRealtimeNanos - lastSample < 30_000_000_000L) return
         try {
-            track?.appendText("${location.latitude},${location.longitude},${location.time},${if (location.hasAltitude()) location.altitude else ""}\n")
+            track?.appendText("${location.latitude},${location.longitude},${location.time},${if (location.hasAltitude()) location.altitude else ""},${if (location.hasAccuracy()) location.accuracy else ""}\n")
             lastSample = location.elapsedRealtimeNanos
         } catch (_: Exception) {
             Toast.makeText(this, "Recording stopped: could not save GPS point", Toast.LENGTH_LONG).show()
