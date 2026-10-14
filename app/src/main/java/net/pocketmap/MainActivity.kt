@@ -255,13 +255,15 @@ class MainActivity : Activity(), LocationListener {
             text = "Trails"
             setOnClickListener { button ->
                 PopupMenu(this@MainActivity, button).apply {
-                    menu.add(0, 4, 3, "Share recorded GPX…")
+                    menu.add(0, 4, 3, "Share recorded KML…")
+                    menu.add(0, 5, 4, "Share recorded GPX…")
                     menu.add(0, 1, 0, "Refresh trails")
                     menu.add(0, 2, 1, "Zoom to trails")
                     menu.add(0, 3, 2, if (trailsVisible) "Hide trails" else "Show trails")
                     setOnMenuItemClickListener { item ->
                         when (item.itemId) {
-                            4 -> chooseRecordedTrack()
+                            4 -> chooseRecordedTrack(false)
+                            5 -> chooseRecordedTrack(true)
                             1 -> refreshTrails()
                             2 -> trailDocument?.let { document ->
                                 val points = document.features.flatMap { it.points }.map { GeoPoint(it.latitude, it.longitude) }
@@ -482,28 +484,29 @@ class MainActivity : Activity(), LocationListener {
     }
     private fun recordings() = File(filesDir, "recordings").listFiles()?.filter { it.extension == "csv" }?.sortedByDescending { it.name } ?: emptyList()
     private fun latestRecording(): File? = prefs.getString("recorded_track", null)?.let { File(File(filesDir, "recordings"), it) }?.takeIf { it.exists() }
-    private fun chooseRecordedTrack() {
+    private fun chooseRecordedTrack(gpx: Boolean) {
         val files = recordings()
         if (files.isEmpty()) { android.widget.Toast.makeText(this, "No recordings yet", android.widget.Toast.LENGTH_SHORT).show(); return }
         android.app.AlertDialog.Builder(this).setTitle("Share recorded track")
-            .setItems(files.map { it.nameWithoutExtension }.toTypedArray()) { _, index -> shareRecording(files[index]) }.show()
+            .setItems(files.map { it.nameWithoutExtension }.toTypedArray()) { _, index -> shareRecording(files[index], gpx) }.show()
     }
-    private fun shareRecording(file: File) {
+    private fun shareRecording(file: File, gpx: Boolean = true) {
         val points = RecordedTrack.read(file)
         if (points.isEmpty()) { android.widget.Toast.makeText(this, "No GPS points recorded yet", android.widget.Toast.LENGTH_LONG).show(); return }
         try {
             val directory = File(filesDir, "exports").apply { mkdirs() }
-            val export = File(directory, file.nameWithoutExtension + ".gpx")
-            export.writeText(RecordedTrack.gpx(file.nameWithoutExtension, points))
-            val uri = android.net.Uri.Builder().scheme("content").authority("$packageName.files").appendPath("gpx").appendPath(export.name).build()
+            val extension = if (gpx) "gpx" else "kml"
+            val export = File(directory, file.nameWithoutExtension + "." + extension)
+            export.writeText(if (gpx) RecordedTrack.gpx(file.nameWithoutExtension, points) else RecordedTrack.kml(file.nameWithoutExtension, points))
+            val uri = android.net.Uri.Builder().scheme("content").authority("$packageName.files").appendPath("export").appendPath(export.name).build()
             val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/gpx+xml"
+                type = if (gpx) "application/gpx+xml" else "application/vnd.google-earth.kml+xml"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, file.nameWithoutExtension)
                 clipData = android.content.ClipData.newRawUri("Recorded trail", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "Share GPX track"))
+            startActivity(Intent.createChooser(intent, if (gpx) "Share GPX track" else "Share KML track"))
         } catch (_: Exception) { android.widget.Toast.makeText(this, "Could not share this track", android.widget.Toast.LENGTH_LONG).show() }
     }
     private fun updateRecording() {
