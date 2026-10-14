@@ -18,6 +18,6 @@ class RecordedTrackTest {
     }
     @Test fun recoversSavedPointsAndIgnoresIncompleteWrite() {
         val file = java.io.File.createTempFile("track", ".csv")
-        try { file.writeText("40.7,-74.7,1000,12.0\n40.8,-74.8,31000,\nbroken"); assertEquals(2, RecordedTrack.read(file).size) } finally { file.delete() }
+        try { file.writeText("40.7,-74.7,1000,12.0,4.5\n40.8,-74.8,31000,,12.0\nbroken"); val points = RecordedTrack.read(file); assertEquals(2, points.size); assertEquals(4.5f, points[0].accuracy); assertEquals(12.0f, points[1].accuracy) } finally { file.delete() }
     }
 }
