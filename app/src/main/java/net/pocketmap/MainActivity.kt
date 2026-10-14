@@ -326,11 +326,8 @@ class MainActivity : Activity(), LocationListener {
         if (reportText != null && cameraPhoto == null) showReport()
     }
 
-    private val collapseAttribution = Runnable { attribution.text = "ⓘ" }
     private fun showAttribution() {
-        attribution.removeCallbacks(collapseAttribution)
-        attribution.text = selectedBasemap.attribution
-        attribution.postDelayed(collapseAttribution, 5000)
+        attribution.text = "ⓘ"
     }
 
     private fun shareCurrentLocation() {
