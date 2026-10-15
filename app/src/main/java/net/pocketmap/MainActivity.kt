@@ -475,8 +475,6 @@ class MainActivity : Activity(), LocationListener {
         if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)); return
         }
-        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
         startForegroundService(Intent(this, RecordingService::class.java))
     }
     private fun recordings() = File(filesDir, "recordings").listFiles()?.filter { it.extension == "csv" }?.sortedByDescending { it.name } ?: emptyList()
