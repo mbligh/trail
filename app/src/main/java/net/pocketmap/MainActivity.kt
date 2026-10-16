@@ -20,6 +20,9 @@ import android.widget.TextView
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.FolderOverlay
 import org.osmdroid.views.overlay.Polyline
@@ -174,6 +177,10 @@ class MainActivity : Activity(), LocationListener {
             overlays.add(recordingOverlay)
             overlays.add(liveRecordingOverlay)
             overlays.add(dot)
+            addMapListener(object : MapListener {
+                override fun onScroll(event: ScrollEvent?): Boolean { showAttribution(); return false }
+                override fun onZoom(event: ZoomEvent?): Boolean { showAttribution(); return false }
+            })
         }
         var startX = 0f
         var startY = 0f
@@ -326,8 +333,10 @@ class MainActivity : Activity(), LocationListener {
     }
 
     private fun showAttribution() {
-        attribution.text = "ⓘ"
+        attribution.text = "ⓘ\n${formatZoom(map.zoomLevelDouble)}"
     }
+
+    private fun formatZoom(zoom: Double): String = if (zoom % 1.0 == 0.0) zoom.toInt().toString() else String.format(java.util.Locale.US, "%.1f", zoom)
 
     private fun shareCurrentLocation() {
         val fix = current?.let { Location(it) }
