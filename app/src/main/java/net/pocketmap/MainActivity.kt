@@ -255,10 +255,18 @@ class MainActivity : Activity(), LocationListener {
                 refreshStatus()
             }
         }
-        val buttons = LinearLayout(this)
-        mapFrame.addView(recenter, android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.TOP or Gravity.END).apply { setMargins(dp(12), dp(12), dp(12), dp(12)) })
-        buttons.addView(Button(this).apply {
-            text = "Trails"
+        mapFrame.addView(recenter, android.widget.FrameLayout.LayoutParams(dp(37), dp(37), Gravity.TOP or Gravity.END).apply { setMargins(dp(12), dp(12), dp(12), dp(12)) })
+        val headerActions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val menuButton = Button(this).apply {
+            text = "☰"
+            textSize = 24f
+            minWidth = dp(48)
+            minHeight = dp(48)
+            setPadding(0, 0, 0, 0)
+            contentDescription = "Menu"
             setOnClickListener { button ->
                 PopupMenu(this@MainActivity, button).apply {
                     menu.add(0, 4, 3, "Share recorded KML…")
@@ -286,8 +294,8 @@ class MainActivity : Activity(), LocationListener {
                     show()
                 }
             }
-        })
-        root.addView(buttons)
+        }
+        headerActions.addView(menuButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         attribution = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 12f
@@ -310,7 +318,8 @@ class MainActivity : Activity(), LocationListener {
                 android.app.AlertDialog.Builder(this@MainActivity).setTitle("Map credits").setView(credits).setPositiveButton("Done", null).show()
             }
         }
-        header.addView(attribution, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.END })
+        headerActions.addView(attribution, LinearLayout.LayoutParams(-2, -2))
+        header.addView(headerActions, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.END })
         showAttribution()
         setContentView(root)
         @Suppress("DEPRECATION")
@@ -537,7 +546,7 @@ class MainActivity : Activity(), LocationListener {
             map.invalidate()
         }
         map.invalidate() // Also remove the live segment after a notification stop or stale fix.
-        recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30 seconds" else if (file != null) "Recorded track saved • Trails menu → Share GPX" else ""
+        recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30 seconds" else ""
         recordStatus.setTextColor(if (running) Color.RED else Color.DKGRAY)
     }
 
