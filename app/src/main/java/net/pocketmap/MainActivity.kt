@@ -164,11 +164,11 @@ class MainActivity : Activity(), LocationListener {
         selectedBasemap = basemaps.find { it.name == prefs.getString("basemap", "openstreetmap") }
             ?: basemaps.find { it.name == "openstreetmap" } ?: basemaps.first()
         map = MapView(this).apply {
-            setTileProvider(OverzoomTileProvider(this@MainActivity, selectedBasemap.tileSource()))
+            setTileSource(selectedBasemap.tileSource())
             setMultiTouchControls(true)
             minZoomLevel = 3.0
-            maxZoomLevel = 19.0
-            controller.setZoom(prefs.getFloat("zoom", 17f).toDouble().coerceAtMost(19.0))
+            maxZoomLevel = selectedBasemap.maxZoom.toDouble()
+            controller.setZoom(prefs.getFloat("zoom", 17f).toDouble().coerceAtMost(selectedBasemap.maxZoom.toDouble()))
             controller.setCenter(GeoPoint(prefs.getFloat("lat", 40.7f).toDouble(), prefs.getFloat("lon", -74.7f).toDouble()))
             overlays.add(trailOverlay)
             overlays.add(recordingOverlay)
@@ -203,8 +203,9 @@ class MainActivity : Activity(), LocationListener {
                     }
                     setOnMenuItemClickListener { item ->
                         selectedBasemap = basemaps[item.itemId]
-                        map.setTileProvider(OverzoomTileProvider(this@MainActivity, selectedBasemap.tileSource()))
-                        map.maxZoomLevel = 19.0
+                        map.setTileSource(selectedBasemap.tileSource())
+                        map.maxZoomLevel = selectedBasemap.maxZoom.toDouble()
+                        if (map.zoomLevelDouble > selectedBasemap.maxZoom) map.controller.setZoom(selectedBasemap.maxZoom.toDouble())
                         prefs.edit().putString("basemap", selectedBasemap.name).apply()
                         basemapButton.text = selectedBasemap.name + " ▾"
                         basemapButton.contentDescription = "Choose basemap: ${selectedBasemap.name}"
