@@ -85,16 +85,23 @@ class TrailTileProvider private constructor(
                 arrayOf<IArchiveFile>(seedArchive, cacheArchive)
             )
 
+            val downloader = MapTileDownloader(tileSource, writer, network)
             val approximater = MapTileApproximater().apply {
                 addProvider(assets)
                 addProvider(archive)
+                // At overzoom levels, fetch the nearest native parent if it is not
+                // already cached. This prevents different screen tiles from being
+                // synthesized from different lower zoom levels.
+                addProvider(downloader)
             }
-            val downloader = MapTileDownloader(tileSource, writer, network)
 
             return TrailTileProvider(
                 tileSource,
                 registerReceiver,
-                arrayOf(assets, archive, approximater, downloader),
+                // Prefer a real native tile over an approximation. For requests above
+                // the source max zoom the downloader is skipped automatically, so the
+                // approximater becomes the fallback.
+                arrayOf(assets, archive, downloader, approximater),
                 writer,
                 network
             )
