@@ -257,8 +257,8 @@ class MainActivity : Activity(), LocationListener {
         }
         mapFrame.addView(recenter, android.widget.FrameLayout.LayoutParams(dp(37), dp(37), Gravity.TOP or Gravity.END).apply { setMargins(dp(12), dp(12), dp(12), dp(12)) })
         val headerActions = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP or Gravity.END
         }
         val menuButton = Button(this).apply {
             text = "☰"
@@ -295,7 +295,6 @@ class MainActivity : Activity(), LocationListener {
                 }
             }
         }
-        headerActions.addView(menuButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         attribution = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 12f
@@ -319,6 +318,7 @@ class MainActivity : Activity(), LocationListener {
             }
         }
         headerActions.addView(attribution, LinearLayout.LayoutParams(-2, -2))
+        headerActions.addView(menuButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         header.addView(headerActions, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.END })
         showAttribution()
         setContentView(root)
@@ -567,7 +567,7 @@ class MainActivity : Activity(), LocationListener {
                     refreshingTrails = false
                     result.fold(onSuccess = { document ->
                         showTrails(document)
-                        trailStatus.text = "${document.name} • ${document.features.size} features • updated"
+                        trailStatus.text = ""
                     }, onFailure = {
                         trailStatus.text = if (trailDocument != null) "${trailDocument!!.name} • cached • refresh failed"
                                            else "Trails unavailable — check connection and map sharing"
