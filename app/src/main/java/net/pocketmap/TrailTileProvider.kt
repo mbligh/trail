@@ -56,9 +56,10 @@ class TrailTileProvider private constructor(
     override fun getTileWriter(): IFilesystemCache = writer
 
     override fun isDowngradedMode(pMapTileIndex: Long): Boolean {
-        if (!networkAvailability.networkAvailable || !useDataConnection()) return true
-        val zoom = MapTileIndex.getZoom(pMapTileIndex)
-        return zoom < source.minimumZoomLevel || zoom > source.maximumZoomLevel
+        // A SCALED in-memory tile is only "best we can do" when offline.
+        // While online, even an overzoom request can be improved: the
+        // approximater can fetch the nearest native parent tile and rescale it.
+        return !networkAvailability.networkAvailable || !useDataConnection()
     }
 
     companion object {
