@@ -18,7 +18,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
-dependencies { implementation("org.osmdroid:osmdroid-android:6.1.20"); testImplementation("junit:junit:4.13.2") }
+dependencies { implementation(files("libs/osmdroid-android-6.1.20.aar")); testImplementation("junit:junit:4.13.2") }
 
 // Bundle the repository-root configuration on every build; do not maintain a second copy.
 val bundleBasemaps by tasks.registering(Sync::class) {
