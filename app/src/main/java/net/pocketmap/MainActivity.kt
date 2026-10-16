@@ -166,8 +166,7 @@ class MainActivity : Activity(), LocationListener {
         basemaps = Basemap.load(assets)
         selectedBasemap = basemaps.find { it.name == prefs.getString("basemap", "openstreetmap") }
             ?: basemaps.find { it.name == "openstreetmap" } ?: basemaps.first()
-        map = MapView(this).apply {
-            setTileSource(selectedBasemap.tileSource())
+        map = MapView(this, tileProvider(selectedBasemap)).apply {
             setMultiTouchControls(true)
             minZoomLevel = 3.0
             maxZoomLevel = 19.0
@@ -210,7 +209,7 @@ class MainActivity : Activity(), LocationListener {
                     }
                     setOnMenuItemClickListener { item ->
                         selectedBasemap = basemaps[item.itemId]
-                        map.setTileSource(selectedBasemap.tileSource())
+                        map.setTileProvider(tileProvider(selectedBasemap))
                         map.maxZoomLevel = 19.0
                         prefs.edit().putString("basemap", selectedBasemap.name).apply()
                         basemapButton.text = selectedBasemap.name + " ▾"
@@ -339,6 +338,11 @@ class MainActivity : Activity(), LocationListener {
             cameraPhoto = it.getString("cameraPhoto")
         }
         if (reportText != null && cameraPhoto == null) showReport()
+    }
+
+    private fun tileProvider(basemap: Basemap): TrailTileProvider {
+        val stores = BasemapTileStorage.prepare(this, basemap)
+        return TrailTileProvider.create(this, basemap.tileSource(), stores.seedFile, stores.cacheFile)
     }
 
     private fun showAttribution() {
