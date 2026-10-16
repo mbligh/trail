@@ -18,7 +18,11 @@ data class Basemap(val name: String, val url: String, val attribution: String = 
     fun tileSource(): XYTileSource {
         val digest = MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).take(8).joinToString("") { "%02x".format(it) }
         return object : XYTileSource("Trail-$digest", 0, maxZoom, 256, ".png", arrayOf(url), attribution) {
-            override fun getTileURLString(index: Long): String = tileUrl(MapTileIndex.getZoom(index), MapTileIndex.getX(index), MapTileIndex.getY(index))
+            override fun getTileURLString(index: Long): String {
+                val zoom = MapTileIndex.getZoom(index)
+                if (zoom > maxZoom) return ""
+                return tileUrl(zoom, MapTileIndex.getX(index), MapTileIndex.getY(index))
+            }
         }
     }
     companion object {
