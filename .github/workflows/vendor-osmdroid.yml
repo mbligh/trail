@@ -1,0 +1,28 @@
+name: Vendor osmdroid
+on:
+  push:
+    paths:
+      - '.github/workflows/vendor-osmdroid.yml'
+permissions:
+  contents: write
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Vendor osmdroid 6.1.20
+        run: |
+          mkdir -p app/libs
+          curl -fL --retry 3 -o app/libs/osmdroid-android-6.1.20.aar \
+            https://repo.maven.apache.org/maven2/org/osmdroid/osmdroid-android/6.1.20/osmdroid-android-6.1.20.aar
+          test "$(stat -c%s app/libs/osmdroid-android-6.1.20.aar)" -gt 800000
+          sed -i 's#implementation("org.osmdroid:osmdroid-android:6.1.20")#implementation(files("libs/osmdroid-android-6.1.20.aar"))#' app/build.gradle.kts
+          grep -q 'implementation(files("libs/osmdroid-android-6.1.20.aar"))' app/build.gradle.kts
+          rm .github/workflows/vendor-osmdroid.yml
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add app/libs/osmdroid-android-6.1.20.aar app/build.gradle.kts .github/workflows/vendor-osmdroid.yml
+          git commit -m "Vendor osmdroid 6.1.20 AAR"
+          git push
