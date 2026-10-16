@@ -21,8 +21,12 @@ import java.io.File
 
 /**
  * Trail's provider chain:
- *   Android assets -> dynamic/seed MBTiles -> lower-zoom approximation -> network
+ *   assets -> dynamic/seed MBTiles -> cached approximation -> network
+ *          -> network-parent approximation (overzoom fallback)
  *
+ * The first approximation stage is intentionally before the downloader so zooming can
+ * immediately display a scaled tile from data already on the device. The final stage is
+ * able to fetch a native parent tile when the requested zoom is above the source maximum.
  * The downloader writes only to the dynamic MBTiles cache.
  */
 class TrailTileProvider private constructor(
@@ -87,22 +91,34 @@ class TrailTileProvider private constructor(
             )
 
             val downloader = MapTileDownloader(tileSource, writer, network)
-            val approximater = MapTileApproximater().apply {
+
+            // Fast visual fallback: use only tiles already present locally. A SCALED
+            // result is treated as temporary while online, so the provider chain keeps
+            // going and replaces it with a better tile when one becomes available.
+            val cachedApproximater = MapTileApproximater().apply {
                 addProvider(assets)
                 addProvider(archive)
-                // At overzoom levels, fetch the nearest native parent if it is not
-                // already cached. This prevents different screen tiles from being
-                // synthesized from different lower zoom levels.
+            }
+
+            // Final overzoom fallback. If the requested zoom is above the source's
+            // native maximum, MapTileProviderArray skips the exact downloader. This
+            // approximater can then fetch the nearest native parent and scale it.
+            val networkParentApproximater = MapTileApproximater().apply {
+                addProvider(assets)
+                addProvider(archive)
                 addProvider(downloader)
             }
 
             return TrailTileProvider(
                 tileSource,
                 registerReceiver,
-                // Prefer a real native tile over an approximation. For requests above
-                // the source max zoom the downloader is skipped automatically, so the
-                // approximater becomes the fallback.
-                arrayOf(assets, archive, downloader, approximater),
+                arrayOf(
+                    assets,
+                    archive,
+                    cachedApproximater,
+                    downloader,
+                    networkParentApproximater
+                ),
                 writer,
                 network
             )
