@@ -2,7 +2,7 @@ package net.pocketmap
 
 import android.content.Context
 import java.io.File
-import java.io.FileNotFoundException
+import java.io.IOException
 
 data class BasemapTileStores(val seedFile: File, val cacheFile: File)
 
@@ -34,7 +34,7 @@ object BasemapTileStorage {
                 context.assets.open("maps/$safeName.mbtiles").use { input ->
                     seed.outputStream().use { output -> input.copyTo(output) }
                 }
-            } catch (_: FileNotFoundException) {
+            } catch (_: IOException) {
                 seed.createNewFile()
             }
         }
