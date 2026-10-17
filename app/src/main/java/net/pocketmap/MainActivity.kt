@@ -38,6 +38,7 @@ class MainActivity : Activity(), LocationListener {
     private lateinit var selectedBasemap: Basemap
     private lateinit var basemapButton: Button
     private lateinit var attribution: TextView
+    private lateinit var zoomLevel: TextView
     private lateinit var map: MapView
     private lateinit var status: TextView
     private lateinit var recenter: android.widget.ImageButton
@@ -300,16 +301,11 @@ class MainActivity : Activity(), LocationListener {
             }
         }
         attribution = TextView(this).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            textSize = 12f
+            gravity = Gravity.CENTER
+            textSize = 16f
             includeFontPadding = false
-            maxWidth = resources.displayMetrics.widthPixels / 2
             setTextColor(Color.DKGRAY)
-            setPadding(dp(8), 0, dp(8), 0)
-            minHeight = dp(48)
-            minWidth = dp(48)
-            background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(12).toFloat() }
-            contentDescription = "Map attribution and licences"
+            text = "ⓘ"
             setOnClickListener {
                 val credits = TextView(this@MainActivity).apply {
                     setPadding(dp(20), dp(16), dp(20), dp(16))
@@ -322,7 +318,28 @@ class MainActivity : Activity(), LocationListener {
                 android.app.AlertDialog.Builder(this@MainActivity).setTitle("Map credits").setView(credits).setPositiveButton("Done", null).show()
             }
         }
-        headerActions.addView(attribution, LinearLayout.LayoutParams(-2, -2))
+
+        }
+        zoomLevel = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 12f
+            includeFontPadding = false
+            setTextColor(Color.DKGRAY)
+        }
+        val infoColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            minWidth = dp(48)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(12).toFloat()
+            }
+            contentDescription = "Map attribution, licences, and zoom level"
+            setOnClickListener { attribution.performClick() }
+        }
+        infoColumn.addView(attribution, LinearLayout.LayoutParams(dp(48), dp(24)))
+        infoColumn.addView(zoomLevel, LinearLayout.LayoutParams(dp(48), dp(24)))
+        headerActions.addView(infoColumn, LinearLayout.LayoutParams(dp(48), dp(48)))
         headerActions.addView(menuButton, LinearLayout.LayoutParams(dp(48), dp(48)))
         header.addView(headerActions, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.END })
         showAttribution()
@@ -387,7 +404,8 @@ class MainActivity : Activity(), LocationListener {
     }
 
     private fun showAttribution() {
-        attribution.text = "ⓘ\n${formatZoom(map.zoomLevelDouble)}"
+        attribution.text = "ⓘ"
+        zoomLevel.text = formatZoom(map.zoomLevelDouble)
     }
 
     private fun formatZoom(zoom: Double): String = if (zoom % 1.0 == 0.0) zoom.toInt().toString() else String.format(java.util.Locale.US, "%.1f", zoom)
