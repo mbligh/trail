@@ -36,7 +36,7 @@ import java.io.File
 class MainActivity : Activity(), LocationListener {
     private lateinit var basemaps: List<Basemap>
     private lateinit var selectedBasemap: Basemap
-    private lateinit var basemapButton: Button
+    private lateinit var basemapButton: android.widget.ImageButton
     private lateinit var attribution: TextView
     private lateinit var zoomLevel: TextView
     private lateinit var map: MapView
@@ -199,10 +199,12 @@ class MainActivity : Activity(), LocationListener {
         }
         val mapFrame = android.widget.FrameLayout(this)
         mapFrame.addView(map, android.widget.FrameLayout.LayoutParams(-1, -1))
-        basemapButton = Button(this).apply {
-            text = selectedBasemap.name + " ▾"
+        basemapButton = android.widget.ImageButton(this).apply {
             contentDescription = "Choose basemap: ${selectedBasemap.name}"
-            elevation = dp(6).toFloat()
+            setImageResource(R.drawable.ic_basemap_map)
+            background = android.graphics.drawable.ColorDrawable(Color.WHITE)
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            setPadding(0, 0, 0, 0)
             setOnClickListener { anchor ->
                 PopupMenu(this@MainActivity, anchor).apply {
                     basemaps.forEachIndexed { index, basemap ->
@@ -216,7 +218,6 @@ class MainActivity : Activity(), LocationListener {
                         map.setTileProvider(tileProvider(selectedBasemap))
                         map.maxZoomLevel = 19.0
                         prefs.edit().putString("basemap", selectedBasemap.name).apply()
-                        basemapButton.text = selectedBasemap.name + " ▾"
                         basemapButton.contentDescription = "Choose basemap: ${selectedBasemap.name}"
                         showAttribution()
                         map.invalidate()
@@ -226,7 +227,7 @@ class MainActivity : Activity(), LocationListener {
                 }
             }
         }
-        mapFrame.addView(basemapButton, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(12), dp(12), dp(12), dp(12)) })
+        header.addView(basemapButton, 0, LinearLayout.LayoutParams(dp(48), dp(48)))
         recordButton = android.widget.ImageButton(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(Color.WHITE) }
             elevation = dp(6).toFloat()
@@ -243,6 +244,20 @@ class MainActivity : Activity(), LocationListener {
             setOnClickListener { shareCurrentLocation() }
         }
         mapFrame.addView(flagButton, android.widget.FrameLayout.LayoutParams(dp(37), dp(37), Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        val pinButton = android.widget.ImageButton(this).apply {
+            contentDescription = "Add pin to recorded track"
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.WHITE)
+            }
+            elevation = dp(6).toFloat()
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            setImageResource(R.drawable.ic_track_pin)
+            setOnClickListener { addRecordingPin() }
+        }
+        mapFrame.addView(pinButton, android.widget.FrameLayout.LayoutParams(dp(37), dp(37), Gravity.TOP or Gravity.START).apply {
+            setMargins(dp(16), dp(16), dp(16), dp(16))
+        })
         root.addView(mapFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         recenter = android.widget.ImageButton(this).apply {
             contentDescription = "Recenter and follow GPS"
@@ -571,7 +586,13 @@ class MainActivity : Activity(), LocationListener {
             val directory = File(filesDir, "exports").apply { mkdirs() }
             val extension = if (gpx) "gpx" else "kml"
             val export = File(directory, file.nameWithoutExtension + "." + extension)
-            export.writeText(if (gpx) RecordedTrack.gpx(file.nameWithoutExtension, points) else RecordedTrack.kml(file.nameWithoutExtension, points))
+            val pins = RecordedPins.read(file)
+            val contents = if (gpx) {
+                RecordedPins.addToGpx(RecordedTrack.gpx(file.nameWithoutExtension, points), pins)
+            } else {
+                RecordedPins.addToKml(RecordedTrack.kml(file.nameWithoutExtension, points), pins)
+            }
+            export.writeText(contents)
             val uri = android.net.Uri.Builder().scheme("content").authority("$packageName.files").appendPath("export").appendPath(export.name).build()
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = if (gpx) "application/gpx+xml" else "application/vnd.google-earth.kml+xml"
@@ -583,6 +604,32 @@ class MainActivity : Activity(), LocationListener {
             startActivity(Intent.createChooser(intent, if (gpx) "Share GPX track" else "Share KML track"))
         } catch (_: Exception) { android.widget.Toast.makeText(this, "Could not share this track", android.widget.Toast.LENGTH_LONG).show() }
     }
+    private fun addRecordingPin() {
+        if (!RecordingService.running) {
+            android.widget.Toast.makeText(this, "Start recording before adding a pin", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val fix = current?.let { Location(it) }
+        if (fix == null || android.os.SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > 30_000_000_000L) {
+            android.widget.Toast.makeText(this, "Waiting for a current GPS fix", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val file = latestRecording()
+        if (file == null) {
+            android.widget.Toast.makeText(this, "Recording file is not ready yet", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            RecordedPins.append(file, fix)
+            // Force the recording overlay to be rebuilt so the new pin appears immediately.
+            displayedLength = -1L
+            updateRecording()
+            android.widget.Toast.makeText(this, "Pin added", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(this, "Could not add pin", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun updateRecording() {
         val running = RecordingService.running
         recordButton.contentDescription = if (running) "Stop recording" else "Start recording"
@@ -604,6 +651,12 @@ class MainActivity : Activity(), LocationListener {
             }
             for (segment in segments.filter { it.size >= 2 }) recordingOverlay.add(Polyline(map).apply {
                 setPoints(segment); title = "Recorded trail"; outlinePaint.color = Color.rgb(21, 101, 192); outlinePaint.strokeWidth = dp(4).toFloat()
+            })
+            for (pin in RecordedPins.read(file)) recordingOverlay.add(Marker(map).apply {
+                position = GeoPoint(pin.latitude, pin.longitude)
+                title = "Pin"
+                icon = getDrawable(R.drawable.ic_track_pin)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
             })
             map.invalidate()
         }
@@ -697,7 +750,7 @@ class MainActivity : Activity(), LocationListener {
             !hasPermission() -> "Location permission needed — tap Recenter"
             current == null -> "Waiting for location — check that Location is enabled"
             following -> "Following GPS • accuracy ±${current!!.accuracy.toInt()} m"
-            else -> "Map paused • tap Recenter to follow GPS"
+            else -> "Tap Recenter to follow GPS"
         }
     }
     @Suppress("MissingPermission")
