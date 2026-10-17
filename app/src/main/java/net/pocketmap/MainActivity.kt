@@ -201,7 +201,7 @@ class MainActivity : Activity(), LocationListener {
         mapFrame.addView(map, android.widget.FrameLayout.LayoutParams(-1, -1))
         basemapButton = android.widget.ImageButton(this).apply {
             contentDescription = "Choose basemap: ${selectedBasemap.name}"
-            setImageResource(R.drawable.ic_basemap_map)
+            setImageResource(R.drawable.basemap_menu)
             background = android.graphics.drawable.ColorDrawable(Color.WHITE)
             scaleType = android.widget.ImageView.ScaleType.CENTER
             setPadding(0, 0, 0, 0)
