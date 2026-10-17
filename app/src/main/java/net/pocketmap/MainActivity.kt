@@ -319,7 +319,6 @@ class MainActivity : Activity(), LocationListener {
             }
         }
 
-        }
         zoomLevel = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 12f
