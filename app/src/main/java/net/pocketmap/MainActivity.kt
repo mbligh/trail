@@ -203,8 +203,8 @@ class MainActivity : Activity(), LocationListener {
             contentDescription = "Choose basemap: ${selectedBasemap.name}"
             setImageResource(R.drawable.basemap_menu)
             background = android.graphics.drawable.ColorDrawable(Color.WHITE)
-            scaleType = android.widget.ImageView.ScaleType.CENTER
-            setPadding(0, 0, 0, 0)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             setOnClickListener { anchor ->
                 PopupMenu(this@MainActivity, anchor).apply {
                     basemaps.forEachIndexed { index, basemap ->
