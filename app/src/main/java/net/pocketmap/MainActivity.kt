@@ -161,7 +161,10 @@ class MainActivity : Activity(), LocationListener {
         statusColumn.addView(status)
         trailStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(6)); text = "Loading trails…" }
         statusColumn.addView(trailStatus)
-        recordStatus = TextView(this).apply { setPadding(dp(12), 0, dp(12), dp(4)) }
+        recordStatus = TextView(this).apply {
+            setPadding(dp(12), 0, dp(12), dp(4))
+            visibility = android.view.View.GONE
+        }
         statusColumn.addView(recordStatus)
         basemaps = Basemap.load(assets)
         selectedBasemap = basemaps.find { it.name == prefs.getString("basemap", "openstreetmap") }
@@ -268,11 +271,12 @@ class MainActivity : Activity(), LocationListener {
             contentDescription = "Menu"
             setOnClickListener { button ->
                 PopupMenu(this@MainActivity, button).apply {
-                    menu.add(0, 4, 3, "Share recorded KML…")
-                    menu.add(0, 5, 4, "Share recorded GPX…")
                     menu.add(0, 1, 0, "Refresh trails")
                     menu.add(0, 2, 1, "Zoom to trails")
                     menu.add(0, 3, 2, if (trailsVisible) "Hide trails" else "Show trails")
+                    menu.add(0, 6, 3, "Legend")
+                    menu.add(0, 4, 4, "Share recorded KML…")
+                    menu.add(0, 5, 5, "Share recorded GPX…")
                     setOnMenuItemClickListener { item ->
                         when (item.itemId) {
                             4 -> chooseRecordedTrack(false)
@@ -287,6 +291,7 @@ class MainActivity : Activity(), LocationListener {
                                 refreshStatus()
                             }
                             3 -> { trailsVisible = !trailsVisible; trailOverlay.isEnabled = trailsVisible; map.invalidate() }
+                            6 -> showLegend()
                         }
                         true
                     }
@@ -295,11 +300,12 @@ class MainActivity : Activity(), LocationListener {
             }
         }
         attribution = TextView(this).apply {
-            gravity = Gravity.CENTER
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             textSize = 12f
+            includeFontPadding = false
             maxWidth = resources.displayMetrics.widthPixels / 2
             setTextColor(Color.DKGRAY)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(8), 0, dp(8), 0)
             minHeight = dp(48)
             minWidth = dp(48)
             background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(12).toFloat() }
@@ -338,6 +344,41 @@ class MainActivity : Activity(), LocationListener {
             cameraPhoto = it.getString("cameraPhoto")
         }
         if (reportText != null && cameraPhoto == null) showReport()
+    }
+
+    private fun showLegend() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        val rows = listOf(
+            Color.rgb(219, 68, 54) to "Blocked",
+            Color.rgb(248, 151, 27) to "Unknown",
+            Color.rgb(244, 235, 55) to "TTA trail",
+            Color.rgb(0, 157, 87) to "Public trail"
+        )
+        for ((color, label) in rows) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, dp(6))
+            }
+            row.addView(android.view.View(this).apply {
+                setBackgroundColor(color)
+            }, LinearLayout.LayoutParams(dp(48), dp(5)))
+            row.addView(TextView(this).apply {
+                text = label
+                textSize = 16f
+            }, LinearLayout.LayoutParams(-2, -2).apply {
+                marginStart = dp(12)
+            })
+            content.addView(row, LinearLayout.LayoutParams(-1, -2))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Legend")
+            .setView(content)
+            .setPositiveButton("Done", null)
+            .show()
     }
 
     private fun tileProvider(basemap: Basemap): TrailTileProvider {
@@ -551,12 +592,14 @@ class MainActivity : Activity(), LocationListener {
         }
         map.invalidate() // Also remove the live segment after a notification stop or stale fix.
         recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30 seconds" else ""
+        recordStatus.visibility = if (running) android.view.View.VISIBLE else android.view.View.GONE
         recordStatus.setTextColor(if (running) Color.RED else Color.DKGRAY)
     }
 
     private fun refreshTrails() {
         if (refreshingTrails || destroyed) return
         refreshingTrails = true
+        trailStatus.visibility = android.view.View.VISIBLE
         trailStatus.text = if (trailDocument == null) "Loading trails…" else "Refreshing trails…"
         val needsCache = trailDocument == null
         trailExecutor.execute {
@@ -572,7 +615,9 @@ class MainActivity : Activity(), LocationListener {
                     result.fold(onSuccess = { document ->
                         showTrails(document)
                         trailStatus.text = ""
+                        trailStatus.visibility = android.view.View.GONE
                     }, onFailure = {
+                        trailStatus.visibility = android.view.View.VISIBLE
                         trailStatus.text = if (trailDocument != null) "${trailDocument!!.name} • cached • refresh failed"
                                            else "Trails unavailable — check connection and map sharing"
                     })
