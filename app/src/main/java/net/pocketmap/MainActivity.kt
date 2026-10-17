@@ -608,7 +608,7 @@ class MainActivity : Activity(), LocationListener {
             map.invalidate()
         }
         map.invalidate() // Also remove the live segment after a notification stop or stale fix.
-        recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30 seconds" else ""
+        recordStatus.text = if (running) if (recordedPointCount == 0) "● Recording • waiting for GPS" else "● Recording • $recordedPointCount points • every 30s" else ""
         recordStatus.visibility = if (running) android.view.View.VISIBLE else android.view.View.GONE
         recordStatus.setTextColor(if (running) Color.RED else Color.DKGRAY)
     }
