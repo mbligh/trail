@@ -328,7 +328,7 @@ class MainActivity : Activity(), LocationListener {
         val infoColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            minWidth = dp(48)
+            minimumWidth = dp(48)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.WHITE)
                 cornerRadius = dp(12).toFloat()
