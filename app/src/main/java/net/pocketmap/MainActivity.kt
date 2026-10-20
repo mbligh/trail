@@ -86,6 +86,8 @@ class MainActivity : Activity(), LocationListener {
     private var following = true
     private var active = false
     private var current: Location? = null
+    private val recentLocations = ArrayDeque<Location>()
+    private val locationWindowNanos = 15_000_000_000L
     private lateinit var phoneHeading: PhoneHeading
     private var facingHeading: Float? = null
     private var headingTime = 0L
@@ -609,11 +611,29 @@ class MainActivity : Activity(), LocationListener {
             android.widget.Toast.makeText(this, "Start recording before adding a pin", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
-        val fix = current?.let { Location(it) }
-        if (fix == null || android.os.SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > 30_000_000_000L) {
-            android.widget.Toast.makeText(this, "Waiting for a current GPS fix", android.widget.Toast.LENGTH_SHORT).show()
+        val now = android.os.SystemClock.elapsedRealtimeNanos()
+        val gps = RecordingService.latestGpsFix?.let { Location(it) }
+            ?.takeIf { now - it.elapsedRealtimeNanos in 0..locationWindowNanos }
+        val fix = gps ?: current?.let { Location(it) }
+            ?.takeIf { now - it.elapsedRealtimeNanos in 0..locationWindowNanos }
+        if (fix == null) {
+            android.widget.Toast.makeText(this, "Waiting for a recent location fix", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
+        if (gps == null || !fix.hasAccuracy() || fix.accuracy > 25f) {
+            val source = if (gps == null) "No recent GPS fix; using ${fix.provider ?: "unknown"}" else "GPS accuracy is poor"
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Low-accuracy pin")
+                .setMessage("$source (±${if (fix.hasAccuracy()) "${fix.accuracy.toInt()} m" else "unknown"}). Save anyway?")
+                .setNegativeButton("Wait", null)
+                .setPositiveButton("Save anyway") { _, _ -> saveRecordingPin(fix) }
+                .show()
+            return
+        }
+        saveRecordingPin(fix)
+    }
+
+    private fun saveRecordingPin(fix: Location) {
         val file = latestRecording()
         if (file == null) {
             android.widget.Toast.makeText(this, "Recording file is not ready yet", android.widget.Toast.LENGTH_SHORT).show()
@@ -768,14 +788,36 @@ class MainActivity : Activity(), LocationListener {
                 if (cached != null && (newest == null || cached.elapsedRealtimeNanos > newest.elapsedRealtimeNanos)) newest = cached
             } catch (_: SecurityException) { }
         }
-        newest?.let { if (android.os.SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < 120_000_000_000L) onLocationChanged(it) }
+        newest?.let { if (android.os.SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos in 0..locationWindowNanos) onLocationChanged(it) }
         refreshStatus()
     }
     override fun onLocationChanged(location: Location) {
+        val now = android.os.SystemClock.elapsedRealtimeNanos()
+        if (now - location.elapsedRealtimeNanos !in 0..locationWindowNanos) return
+        recentLocations.addLast(Location(location))
+        while (recentLocations.isNotEmpty() &&
+            now - recentLocations.first().elapsedRealtimeNanos > locationWindowNanos) {
+            recentLocations.removeFirst()
+        }
+        // The recorder owns the GPS stream while recording; do not let a newer
+        // but much less accurate network estimate displace a good GPS fix.
+        val serviceGps = if (RecordingService.running) RecordingService.latestGpsFix
+            ?.takeIf { now - it.elapsedRealtimeNanos in 0..locationWindowNanos } else null
+        val gps = (recentLocations.filter { it.provider == LocationManager.GPS_PROVIDER } +
+            listOfNotNull(serviceGps)).filter { it.hasAccuracy() }
+        val bestGps = gps.minByOrNull { it.accuracy }
+        val chosen = if (bestGps != null) {
+            val tolerance = maxOf(bestGps.accuracy * 2f, bestGps.accuracy + 5f)
+            gps.filter { it.accuracy <= tolerance }.maxByOrNull { it.elapsedRealtimeNanos }
+        } else {
+            recentLocations.maxByOrNull { it.elapsedRealtimeNanos }
+        } ?: return
         val previous = current
-        if (previous != null && location.elapsedRealtimeNanos < previous.elapsedRealtimeNanos) return
-        current = location
-        if (following) map.controller.setCenter(GeoPoint(location.latitude, location.longitude))
+        current = Location(chosen)
+        if (following && (previous == null || previous.latitude != chosen.latitude ||
+                previous.longitude != chosen.longitude)) {
+            map.controller.setCenter(GeoPoint(chosen.latitude, chosen.longitude))
+        }
         map.invalidate()
         refreshStatus()
     }
@@ -789,6 +831,7 @@ class MainActivity : Activity(), LocationListener {
     }
     override fun onResume() { super.onResume(); active = true; phoneHeading.start(); map.onResume(); startLocation(); recordingHandler.removeCallbacks(recordingTick); recordingHandler.post(recordingTick) }
     override fun onPause() {
+        recentLocations.clear()
         active = false
         phoneHeading.stop()
         recordingHandler.removeCallbacks(recordingTick)
