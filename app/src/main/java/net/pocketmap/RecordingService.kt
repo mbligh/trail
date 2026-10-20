@@ -14,6 +14,7 @@ import java.time.Instant
 class RecordingService : Service(), LocationListener {
     companion object {
         @Volatile var running = false
+        @Volatile var latestGpsFix: Location? = null
         const val STOP = "net.pocketmap.STOP_RECORDING"
     }
     private lateinit var manager: LocationManager
@@ -29,6 +30,7 @@ class RecordingService : Service(), LocationListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP) { stopSelf(); return START_NOT_STICKY }
         if (running) return START_NOT_STICKY
+        latestGpsFix = null
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED || !manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             Toast.makeText(this, "Enable GPS and precise location to record", Toast.LENGTH_LONG).show()
             stopSelf(); return START_NOT_STICKY
@@ -57,6 +59,7 @@ class RecordingService : Service(), LocationListener {
         if (now - location.elapsedRealtimeNanos > 45_000_000_000L) return
 
         val fix = Location(location)
+        latestGpsFix = Location(fix)
         recentFixes.addLast(fix)
         val oldestAllowed = fix.elapsedRealtimeNanos - 10_000_000_000L
         while (recentFixes.isNotEmpty() && recentFixes.first().elapsedRealtimeNanos < oldestAllowed) {
@@ -95,6 +98,7 @@ class RecordingService : Service(), LocationListener {
     @Deprecated("Legacy callback") override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) { }
     override fun onDestroy() {
         running = false
+        latestGpsFix = null
         recentFixes.clear()
         manager.removeUpdates(this)
         stopForeground(STOP_FOREGROUND_REMOVE)
