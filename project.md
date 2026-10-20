@@ -172,3 +172,7 @@ Verified 2026-10-13: service-account JSON secret configured by user; workflow ru
 ## Header information button (1.12)
 
 Move the map attribution/information control to the far right of the white status header above the map, aligned to the top. No attribution control overlays the map. Startup/basemap credit text still appears for five seconds before collapsing to the circular information symbol; tapping it opens the existing credits/licence dialog. Location, trail and recording status occupy the header column to its left. Recenter remains at the map's top-right. Release automatically publishes to Play internal testing.
+
+## GPS selection and recording pins (2026-10-20)
+
+The activity keeps a 15-second location window, prefers recent GPS fixes (newest within a tolerance of the best reported accuracy), and uses network positions only when no recent GPS fix is available. Cached positions older than 15 seconds are not accepted at resume. The recording service continues requesting GPS exclusively and publishes its latest raw GPS fix separately from its 30-second persisted samples. While recording, pin placement prefers that service fix, requires it to be at most 15 seconds old, and warns with an explicit Save anyway option when accuracy exceeds 25 m, is unknown, or only a network fallback is available. The map can still display a network fallback. This is intended to prevent transient coarse network locations after screen unlock from displacing accurate GPS pins.
